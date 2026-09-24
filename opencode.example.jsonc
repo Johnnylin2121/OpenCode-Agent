@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": ["~/.config/opencode/skills"]
+  },
+  "permission": {
+    "edit": {
+      "*": "allow",
+      "**/.obsidian/**": "deny",
+      "**/MEMORY.md": "deny",
+      "**/交易体系/**": "deny",
+      "**/早读复核/**": "deny",
+      "**/财经早读/**": "deny",
+      "**/交易记忆/**": "deny",
+      "**/亚马逊工作管理/**": "deny"
+    },
+    "bash": "ask",
+    "webfetch": "ask",
+    "websearch": "ask"
+  }
+}
