@@ -1,5 +1,7 @@
 # Windows and macOS maintenance
 
+[English](DUAL-END.md) | [简体中文](DUAL-END.zh-CN.md)
+
 ## Common source rule
 
 The Git repository stores portable OpenCode definitions. Each machine owns its local OpenCode configuration and deployment. Do not edit another Agent's files, do not create cross-Agent links, and do not commit machine-local state.

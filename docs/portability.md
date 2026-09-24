@@ -1,5 +1,7 @@
 # Portability rules
 
+[English](portability.md) | [简体中文](portability.zh-CN.md)
+
 This repository is shared by Windows and macOS OpenCode installations.
 
 ## Required conventions

@@ -1,5 +1,7 @@
 # Third-party notices
 
+[English](THIRD_PARTY_NOTICES.md) | [简体中文](THIRD_PARTY_NOTICES.zh-CN.md)
+
 This repository contains adapted workflows and optional upstream references. The root MIT license covers original repository material, not automatically every third-party skill or copied excerpt.
 
 - `caveman`, `caveman-commit`, `caveman-help`, `caveman-review`, and `caveman-compress`: upstream references are documented in each skill; verify the upstream license before redistribution.

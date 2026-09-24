@@ -1,5 +1,7 @@
 # Security and sharing boundary
 
+[English](SECURITY.md) | [简体中文](SECURITY.zh-CN.md)
+
 - Do not commit API keys, cookies, tokens, private URLs, credentials, account identifiers, real holdings, real ASINs, exports, databases, or generated reports.
 - OpenCode output belongs under the machine's OpenCode output root, not in Git.
 - Obsidian and other knowledge bases are read-only unless the user explicitly authorizes a specific write.

@@ -1,5 +1,7 @@
 # Portability
 
+[English](PORTABILITY.md) | [简体中文](PORTABILITY.zh-CN.md)
+
 This repository supports Windows and macOS OpenCode installations.
 
 ## Invariants

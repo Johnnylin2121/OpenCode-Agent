@@ -1,5 +1,7 @@
 # Repository map
 
+[English](REPO-MAP.md) | [简体中文](REPO-MAP.zh-CN.md)
+
 ## Ownership boundaries
 
 | Area | Owner | May contain | Must not contain |

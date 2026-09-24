@@ -1,5 +1,7 @@
 # OpenCode-Agent
 
+Language: [English](README.md) | [简体中文](README.zh-CN.md)
+
 Portable OpenCode skills, commands, agents, tools, and validation rules for Windows and macOS.
 
 This repository is the shared source for OpenCode workflow definitions. It is not a runtime database, a knowledge base, or another Agent's configuration. Each machine keeps its own OpenCode configuration, credentials, local skills deployment, browser state, and generated outputs.
