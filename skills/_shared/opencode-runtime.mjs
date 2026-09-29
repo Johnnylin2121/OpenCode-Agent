@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const base = path.dirname(fileURLToPath(import.meta.url))
-const VAULT_LIKE_PARTS = new Set(['.obsidian', '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理'])
+const VAULT_LIKE_PARTS = new Set(['.obsidian', '.trash', '工作', '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理'])
 
 export const OPENCODE_SKILLS_ROOT = path.resolve(base, '..')
 export const OPENCODE_CONFIG_ROOT = path.resolve(base, '..', '..')

@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "default_agent": "opencode-default",
   "skills": {
     "paths": ["~/.config/opencode/skills"]
   },
@@ -7,11 +8,13 @@
     "edit": {
       "*": "allow",
       "**/.obsidian/**": "deny",
+      "**/.trash/**": "deny",
       "**/MEMORY.md": "deny",
       "**/交易体系/**": "deny",
       "**/早读复核/**": "deny",
       "**/财经早读/**": "deny",
       "**/交易记忆/**": "deny",
+      "**/工作/**": "deny",
       "**/亚马逊工作管理/**": "deny"
     },
     "bash": "ask",

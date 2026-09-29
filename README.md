@@ -30,12 +30,23 @@ docs/                   Portability and maintenance notes
 
 See `REPO-MAP.md` for ownership and data flow, and `DUAL-END.md` for Windows/macOS maintenance.
 
+## Inventory
+
+| Area | Count | Notes |
+|---|---:|---|
+| Skills | 20 | trading, Amazon, session handoff, public browser, caveman, find-skills, grill-me |
+| Commands | 16 | user-triggered workflow and caveman entrypoints |
+| Agents | 7 | 3 primary orchestrators, 4 read-only subagents |
+| Custom tools | 3 | `safe-output`, `runtime-preflight`, `market-data` |
+
+`opencode-default` is the default primary agent. Every skill declares `compatibility: opencode` and carries metadata for Vault access and output policy.
+
 ## Requirements
 
 - Node.js `>=22.20.0`
 - Python 3.11 or newer
 - `pandas`, `numpy`, `openpyxl`, `PyYAML`, and `akshare` for data workflows
-- Optional browser MCP or `bsk` only when the user explicitly requests browser work
+- Optional browser MCP for public pages only, invoked by the user
 
 Install repository dependencies:
 

@@ -10,18 +10,14 @@ metadata:
   output-policy: opencode-non-vault
 ---
 
-## OpenCode 双端执行约定
-
-本文中的 `powershell` 代码块是 Windows 示例；macOS 使用 `bash`/`zsh`。统一先设置 `SKILL_ROOT` 和 `PY`：Windows 使用 `$env:USERPROFILE\.config\opencode\skills\<skill>` 与 `python`，macOS 使用 `$HOME/.config/opencode/skills/<skill>` 与 `python3`。优先使用 `runtime-preflight`、`safe-output` 和 `market-data` 工具；不要把示例中的路径直接复制到另一端。输出必须位于本机 OpenCode 输出根，Vault 默认只读。
-
 # OpenCode 执行边界
 
 1. Vault、财经早读、wiki 和 entity 文件只读。
-2. 禁止创建、修改、移动、删除或回写任何 Obsidian 文件。
-3. 默认输出到 `{OPENCODE_CONFIG_ROOT}\outputs\trading\policy-impact\`。
+2. 禁止创建、修改、移动、删除或回写任何 Obsidian 知识库文件。
+3. 默认输出到 `{OPENCODE_OUTPUT_ROOT}/trading/policy-impact/`。
 4. 仅在用户实际触发时使用公开网络和行情数据。
 5. 不访问账户、Cookie、Token 或交易凭据。
-6. 不调用 MiMo、DSH、Obsidian 或 domain-memory 专用工具。
+6. 不使用其他 Agent 专用工具、Obsidian 插件或外部记忆插件；行情统一走下方 OpenCode 入口。
 
 # 政策事件追踪
 
@@ -82,6 +78,8 @@ node "$MK" sina "sh600519,sz000001"
 node "$MK" tencent "sh600519,sz000001"
 ```
 
+macOS 对应写法：`$MK="$HOME/.config/opencode/skills/_shared/opencode-market.mjs"`，其余子命令一致。也可直接使用 OpenCode 内置 `market-data` 工具（`index`、`stocks`、`sina`、`tencent`、`kline`、`sector`、`get`）。
+
 - 东方财富作为板块涨跌幅和成交额基准；
 - 新浪和腾讯用于交叉验证；
 - 数据冲突必须显著标注；
@@ -114,7 +112,7 @@ node "$MK" tencent "sh600519,sz000001"
 
 ## 输出位置
 
-默认文件：`{OPENCODE_CONFIG_ROOT}\outputs\trading\policy-impact\YYYY-MM-DD-{政策名}-政策追踪.md`。
+默认文件：`{OPENCODE_OUTPUT_ROOT}/trading/policy-impact/YYYY-MM-DD-{政策名}-政策追踪.md`。
 
 用户未要求文件时，直接在对话中输出完整报告。
 

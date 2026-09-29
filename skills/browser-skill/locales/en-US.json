@@ -1,0 +1,4 @@
+{
+    "displayName": "Public Browser",
+    "brief": "Inspect public pages with webfetch and Playwright MCP; never use logged-in profiles"
+}

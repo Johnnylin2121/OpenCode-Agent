@@ -7,6 +7,11 @@ description: |-
   shorten replies, "简短点"/"省 token"/"be brief"/"shorter", status-only dumps, or token pressure.
   Also explicit: "caveman mode", "less tokens", "/caveman". Stay until "stop caveman"/"normal mode".
   Prefer passive activation when user wants brevity — do not require naming the mode.
+compatibility: opencode
+metadata:
+  vault-access: read-only
+  output-policy: opencode-non-vault
+
 ---
 
 Respond terse like smart caveman. All technical substance stay. Only fluff die.

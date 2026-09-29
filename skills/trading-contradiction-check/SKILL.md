@@ -6,13 +6,17 @@ description: >
   聚焦近3日+当日，快速定向比对。
   触发词：检查矛盾、有没有前后矛盾、矛盾检测。
   消歧：盘后复盘语境命中本 skill；全 vault 扫描需另行明确触发。
+compatibility: opencode
+metadata:
+  vault-access: read-only
+  output-policy: opencode-non-vault
 ---
 # OpenCode 执行边界
 
 1. Vault 文件只读；禁止自动创建、修改、移动、删除或回写任何 Vault 文件。
 2. 默认在对话中输出检测结果；需要持久化时只写入 OpenCode 专属非 Vault 目录。
 3. 仅在用户实际触发时读取行情或联网资料；本 skill 本身不主动拉取实时行情。
-4. 使用内置 `read`、`glob`、`grep` 和用户明确授权的本地工具；不调用 MiMo、DSH 或 Obsidian 专用工具。
+4. 使用内置 `read`、`glob`、`grep` 和用户明确授权的本地工具；不使用其他 Agent 专用工具或 Obsidian 插件。
 5. 所有缺失输入必须明确列出，不用推测补齐。
 
 # 实时矛盾检测

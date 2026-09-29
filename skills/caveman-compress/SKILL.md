@@ -6,6 +6,11 @@ description: |-
   file, or to save tokens on MEMORY.md / CLAUDE.md / todos — confirm then run. Explicit:
   "/caveman-compress FILEPATH" or "compress memory file". Confirm before overwriting MEMORY.md
   (sensitive sections). Backup: FILE.original.md beside source (manual path local-only).
+compatibility: opencode
+metadata:
+  vault-access: read-only
+  output-policy: opencode-non-vault
+
 ---
 
 # Caveman Compress
@@ -31,7 +36,7 @@ Compress natural language files into caveman-speak to reduce input tokens. Overw
 3. 覆盖写回原文件（不碰备份）
 4. 返回：新文件路径 + 备份路径 + 压缩前后字符数对比
 
-可选 CLI 路径（仅当已配置 ANTHROPIC_API_KEY 或 claude CLI 时）：在本 SKILL 基目录（`caveman-compress\`，cwd=skill 基目录）运行 `python -m scripts <absolute_filepath>`（Windows 无 `python3` 命令），脚本自动检测环境；失败则回退上述手工压缩。
+可选 CLI 路径（**默认关闭**）：仅当用户在本会话明确授权把文件内容发送到外部压缩后端，且本机已配置 `scripts/compress.py` 支持的后端（`ANTHROPIC_API_KEY` 环境变量或 `claude` CLI 之一）时才使用——在本 SKILL 基目录（`caveman-compress\`，cwd=skill 基目录）运行 `python -m scripts <absolute_filepath>`（Windows 用 `python` 或 `$env:OPENCODE_PYTHON`；macOS 用 `python3` 或 `$OPENCODE_PYTHON`）。未授权、后端未配置或调用失败时一律回退上述本地手工压缩，不索取、不打印、不写入任何凭据；涉及知识库文件时先校验路径非 Vault，并用 `safe-output` 处理备份位置。
 
 ## Compression Rules
 

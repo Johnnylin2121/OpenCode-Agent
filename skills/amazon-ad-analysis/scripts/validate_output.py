@@ -13,6 +13,11 @@ sheet 结构并存，人工无法察觉漂移。
     python validate_output.py --input "分析数据.xlsx"
     python validate_output.py --input a.xlsx --input b.xlsx --json result.json
 
+路径规则：--json 给绝对路径即按显式路径写入；只给文件名时写入 OpenCode 输出根
+（$OPENCODE_OUTPUT_ROOT，缺省 ~/.config/opencode/outputs）下的 amazon/ad-analysis/。
+Vault、Vault-like 目录段（含大小写/全角变体）、含 '..' 的穿越路径、
+CWD 内的隐式相对输出都会被拒绝（退出码 2）。
+
 退出码：0 = 全部通过；1 = 存在不符合项（详情打印 / 写 json）；2 = 用法或读取错误。
 
 依赖：openpyxl（使用当前 OpenCode Python）。Windows 下强制 UTF-8 输出。
@@ -24,22 +29,73 @@ import argparse
 import json
 import os
 import sys
+import unicodedata
 from pathlib import Path
 
-FORBIDDEN_PARTS = {'.obsidian', '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理'}
+# 禁止写入的 Vault-like 目录段 / 文件名（判定时统一做 NFKC + casefold，故此处大小写与全角不敏感）
+FORBIDDEN_PARTS = {
+    '.obsidian', '.trash', '工作',
+    '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理',
+}
+FORBIDDEN_NAMES = {'memory.md'}
+
+OUTPUT_SUBDIR = ('amazon', 'ad-analysis')
+OPENCODE_CONFIG_ROOT = Path.home() / '.config' / 'opencode'
 
 
-def safe_output_path(raw):
-    target = Path(raw).expanduser().resolve()
+def _fold(value) -> str:
+    return unicodedata.normalize('NFKC', str(value)).casefold()
+
+
+FORBIDDEN_PARTS_FOLDED = frozenset(_fold(part) for part in FORBIDDEN_PARTS)
+FORBIDDEN_NAMES_FOLDED = frozenset(_fold(name) for name in FORBIDDEN_NAMES)
+
+
+def opencode_output_root() -> Path:
+    """OpenCode 非 Vault 输出根：优先 OPENCODE_OUTPUT_ROOT。"""
+    root = os.environ.get('OPENCODE_OUTPUT_ROOT') or str(OPENCODE_CONFIG_ROOT / 'outputs')
+    return Path(root).expanduser().resolve()
+
+
+def default_output_dir() -> Path:
+    return opencode_output_root().joinpath(*OUTPUT_SUBDIR)
+
+
+def is_within(parent: Path, child: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def safe_output_path(raw) -> Path:
+    """校验输出路径：拒绝 Vault、Vault-like 段、路径穿越与 CWD 隐式输出。
+
+    绝对路径视为显式指定；纯文件名落到本技能 OpenCode 输出目录；其他相对路径拒绝。
+    """
+    if raw is None or not str(raw).strip():
+        raise ValueError('输出路径为空')
+    text = str(raw).strip()
+    candidate = Path(text).expanduser()
+    if '..' in candidate.parts:
+        raise ValueError(f'路径穿越被拒绝: {text}')
+    if not candidate.is_absolute():
+        is_bare_name = len(candidate.parts) == 1 and not text.startswith(('.\\', './'))
+        if not is_bare_name:
+            raise ValueError(
+                f'拒绝 CWD 隐式输出: {text}；请改用绝对非 Vault 路径、'
+                f'只给文件名（写入 {default_output_dir()}），或省略 --json'
+            )
+        candidate = default_output_dir() / candidate.name
+    target = candidate.resolve()
     vault = os.environ.get('VAULT_PATH')
-    if vault:
-        try:
-            target.relative_to(Path(vault).expanduser().resolve())
-            raise ValueError(f'Vault write denied: {target}')
-        except ValueError as exc:
-            if str(exc).startswith('Vault write denied:'):
-                raise
-    if any(part in FORBIDDEN_PARTS for part in target.parts) or target.name == 'MEMORY.md':
+    if vault and is_within(Path(vault).expanduser().resolve(), target):
+        raise ValueError(f'Vault write denied: {target}')
+    hit = {_fold(part) for part in target.parts} & FORBIDDEN_PARTS_FOLDED
+    if hit:
+        raise ValueError(f'Vault-like write denied: {target}（命中段: {", ".join(sorted(hit))}）')
+    if _fold(target.name) in FORBIDDEN_NAMES_FOLDED:
         raise ValueError(f'Vault-like write denied: {target}')
     return target
 
@@ -201,7 +257,7 @@ def report(result: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="校验分析产出是否符合 output-spec v2.0")
     parser.add_argument("--input", action="append", required=True, help="待校验 xlsx（可多次）")
-    parser.add_argument("--json", help="把结果写入该 JSON 文件")
+    parser.add_argument("--json", help="把结果写入该 JSON 文件（只给文件名时写入 OpenCode 输出根）")
     args = parser.parse_args()
 
     results = [check_workbook(p) for p in args.input]
@@ -209,7 +265,11 @@ def main() -> int:
         report(r)
 
     if args.json:
-        target = safe_output_path(args.json)
+        try:
+            target = safe_output_path(args.json)
+        except ValueError as exc:
+            print(f"  [错误] {exc}")
+            return 2
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
         print(f"\nJSON 已写入：{target}")

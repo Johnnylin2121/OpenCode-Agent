@@ -5,6 +5,11 @@ description: |-
   AUTO-TRIGGER without "/review": user pastes a diff/PR, says "review this", "看看这个改动", "code review",
   or asks whether a change is safe — output terse review lines immediately. Also explicit:
   "review the diff", "/caveman-review". Does not approve/request-changes or run linters unless asked.
+compatibility: opencode
+metadata:
+  vault-access: read-only
+  output-policy: opencode-non-vault
+
 ---
 
 Write code review comments terse and actionable. One line per finding. Location, problem, fix. No throat-clearing.

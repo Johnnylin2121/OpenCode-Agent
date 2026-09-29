@@ -10,17 +10,13 @@ metadata:
   output-policy: opencode-non-vault
 ---
 
-## OpenCode 双端执行约定
-
-本文中的 `powershell` 代码块是 Windows 示例；macOS 使用 `bash`/`zsh`。统一先设置 `SKILL_ROOT` 和 `PY`：Windows 使用 `$env:USERPROFILE\.config\opencode\skills\<skill>` 与 `python`，macOS 使用 `$HOME/.config/opencode/skills/<skill>` 与 `python3`。优先使用 `runtime-preflight`、`safe-output` 和 `market-data` 工具；不要把示例中的路径直接复制到另一端。输出必须位于本机 OpenCode 输出根，Vault 默认只读。
-
 # OpenCode 执行边界
 
 1. 用户上传或指定的原始文件只读；不覆盖、删除或移动输入文件。
 2. 禁止写入 Obsidian Vault、`工作/` 目录、`亚马逊工作管理/` 或 `MEMORY.md`。
-3. 默认产物写入 `{OPENCODE_CONFIG_ROOT}\outputs\amazon\ad-analysis\`。
+3. 默认产物写入 `{OPENCODE_OUTPUT_ROOT}/amazon/ad-analysis/`。
 4. 仅用户实际触发时访问公开 Amazon 页面或关键词来源；不访问 Amazon 账户、登录态或 Cookie。
-5. 不调用 MiMo、DSH、Obsidian、domain-memory 或 Excel 专用工具。
+5. 不使用其他 Agent 专用工具、Obsidian 插件或 Excel 商业插件。
 6. 所有结论必须能追溯到输入文件行或公开来源；缺失数据写 `[待补]`。
 
 # Amazon 广告与经营分析
@@ -50,7 +46,7 @@ metadata:
 
 ```powershell
 $SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-ad-analysis"
-$PY = "python"
+$PY = $env:OPENCODE_PYTHON; if (-not $PY) { $PY = "python" }
 & $PY "$SKILL\scripts\analysis_v2.py" --help
 ```
 
@@ -61,6 +57,8 @@ $PROBE = "$env:USERPROFILE\.config\opencode\skills\_shared\excel-probe.py"
 & $PY "$PROBE" describe --input <file.xlsx> --n 8
 & $PY "$PROBE" columns --input <file.xlsx>
 ```
+
+macOS 对应写法：技能目录为 `$HOME/.config/opencode/skills/amazon-ad-analysis`（探查脚本为 `$HOME/.config/opencode/skills/_shared/excel-probe.py`），解释器用 `python3` 或 `$OPENCODE_PYTHON`。运行前可先执行 `runtime-preflight`。
 
 脚本支持 CSV 和 Excel；所有输出路径必须是非 Vault 路径。
 
@@ -181,7 +179,7 @@ $PROBE = "$env:USERPROFILE\.config\opencode\skills\_shared\excel-probe.py"
 
 默认输出到：
 
-`{OPENCODE_CONFIG_ROOT}\outputs\amazon\ad-analysis\YYYY-MM-DD\`
+`{OPENCODE_OUTPUT_ROOT}/amazon/ad-analysis/YYYY-MM-DD/`
 
 产物包括：
 

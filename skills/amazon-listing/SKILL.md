@@ -10,17 +10,13 @@ metadata:
   output-policy: opencode-non-vault
 ---
 
-## OpenCode 双端执行约定
-
-本文中的 `powershell` 代码块是 Windows 示例；macOS 使用 `bash`/`zsh`。统一先设置 `SKILL_ROOT` 和 `PY`：Windows 使用 `$env:USERPROFILE\.config\opencode\skills\<skill>` 与 `python`，macOS 使用 `$HOME/.config/opencode/skills/<skill>` 与 `python3`。优先使用 `runtime-preflight`、`safe-output` 和 `market-data` 工具；不要把示例中的路径直接复制到另一端。输出必须位于本机 OpenCode 输出根，Vault 默认只读。
-
 # OpenCode 执行边界
 
 1. 用户输入和竞品资料只读；不修改或删除原始资料。
-2. 禁止写入 Obsidian Vault、`工作/` 目录或任何 Amazon 工作管理 Vault 路径。
-3. 默认结果写入 `{OPENCODE_CONFIG_ROOT}\outputs\amazon\listing\`；用户未要求文件时直接输出对话。
+2. 禁止写入 Obsidian Vault、`工作/` 目录或任何 Amazon 工作管理知识库路径。
+3. 默认结果写入 `{OPENCODE_OUTPUT_ROOT}/amazon/listing/`；用户未要求文件时直接输出对话。
 4. 仅用户实际触发时访问公开网页；默认不访问 Amazon 账户、登录态、Cookie 或扩展数据。
-5. 不调用 MiMo、DSH、browser-skill 或账户类工具。
+5. 不使用其他 Agent 专用工具、浏览器接管工具或账户类工具。
 6. 竞品声称不能直接变成本产品事实；未确认的规格、认证和兼容性统一标记 `[待确认]`。
 
 # Amazon Listing Optimization Workflow
@@ -67,19 +63,20 @@ metadata:
 1. 使用 `webfetch` 获取公开商品页；
 2. 页面截断、CAPTCHA 或需要登录时，使用当前 Playwright MCP `playwright-mcp:playwright`；
 3. 仍无法获取时，请用户粘贴标题和五点；
-4. 不使用 DSH `browser_*`、`read_page` 或 browser-skill；
+4. 不使用其他 Agent 的浏览器工具或页面读取工具；
 5. 每个来源最多尝试两次，失败后记录 `[待补]`。
 
 ### 关键词脚本
 
-使用当前 `python` 和 OpenCode 技能目录：
+使用本机 Python 和 OpenCode 技能目录：
 
 ```powershell
 $SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-listing"
+$PY = $env:OPENCODE_PYTHON; if (-not $PY) { $PY = "python" }
 & $PY "$SKILL\scripts\kw_analysis.py" -i competitors.txt
 ```
 
-其中 `$PY = "python"`。脚本只负责 1-gram 和 2-gram 权重统计；agent 负责同根词合并、Top 10 筛选和需求类型标注。
+其中 `$PY` 在 Windows 上为 `python` 或 `$env:OPENCODE_PYTHON`；macOS 上为 `python3` 或 `$OPENCODE_PYTHON`（技能目录为 `$HOME/.config/opencode/skills/amazon-listing`）。运行前可先执行 `runtime-preflight`。脚本只负责 1-gram 和 2-gram 权重统计；agent 负责同根词合并、Top 10 筛选和需求类型标注。
 
 关键词必须标注：
 
@@ -143,7 +140,7 @@ $SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-listing"
 
 默认输出文件：
 
-`{OPENCODE_CONFIG_ROOT}\outputs\amazon\listing\YYYY-MM-DD-{ASIN}-{product}-listing.md`
+`{OPENCODE_OUTPUT_ROOT}/amazon/listing/YYYY-MM-DD-{ASIN}-{product}-listing.md`
 
 输出包含：
 

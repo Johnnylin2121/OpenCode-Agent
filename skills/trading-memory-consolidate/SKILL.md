@@ -14,9 +14,9 @@ metadata:
 
 1. Vault、MEMORY.md、交接文件和交易记忆目录只读。
 2. 禁止自动创建、修改、移动、删除、回写或归档任何 Vault 文件。
-3. 默认输出到 `{OPENCODE_CONFIG_ROOT}\outputs\trading\memory\consolidation\`。
+3. 默认输出到 `{OPENCODE_OUTPUT_ROOT}/trading/memory/consolidation/`。
 4. 只生成审阅结果、总表草稿、迁移计划和校验报告；不执行实际迁移。
-5. 不调用 MiMo、DSH、Obsidian、domain-memory 或 Git 推送工具。
+5. 不使用其他 Agent 专用工具、Obsidian 插件、外部记忆插件或 Git 推送工具。
 6. 不访问账户、凭据或实时网络；所有事实必须来自用户明确提供或允许读取的本地文件。
 
 # 交易记忆归纳整理工作流
@@ -117,7 +117,7 @@ metadata:
 
 ## 输出文件
 
-默认目录：`{OPENCODE_CONFIG_ROOT}\outputs\trading\memory\consolidation\`
+默认目录：`{OPENCODE_OUTPUT_ROOT}/trading/memory/consolidation/`
 
 可生成：
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * xueqiu.mjs — 雪球公开行情（匿名 cookie），OpenCode 可选数据源
+ * xueqiu.mjs — OpenCode 可选雪球公开行情源（临时匿名 Cookie）
  *
  * 用法:
  *   node xueqiu.mjs quote  SH600519,SZ300750,SH000001
@@ -11,7 +11,7 @@
  * 说明: 无需登录；先访问 xueqiu.com/hq 播种匿名 cookie；400016 失效时自动重播再试。
  * volume 单位=股（A股 1手=100股）。与东财/新浪冲突时按交易技能冲突规则标注。
  */
-const UA = 'Mozilla/5.0 (compatible; OpenCode/1.0; +https://opencode.ai) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36'
+const UA = 'Mozilla/5.0 (compatible; OpenCode/1.0) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36'
 const STOCK = 'https://stock.xueqiu.com'
 const SITE = 'https://www.xueqiu.com'
 

@@ -6,6 +6,11 @@ description: |-
   asks for a commit message, or is about to `git commit` — generate the terse message without
   waiting for "/commit". Also explicit: "write a commit", "commit message", "/caveman-commit".
   Does not run git itself unless asked.
+compatibility: opencode
+metadata:
+  vault-access: read-only
+  output-policy: opencode-non-vault
+
 ---
 
 Write commit messages terse and exact. Conventional Commits format. No fluff. Why over what.

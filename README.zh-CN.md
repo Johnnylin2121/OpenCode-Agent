@@ -32,12 +32,23 @@ docs/                   便携性与维护说明
 
 详细说明见 [REPO-MAP.zh-CN.md](REPO-MAP.zh-CN.md)；双端维护见 [DUAL-END.zh-CN.md](DUAL-END.zh-CN.md)。
 
+## 资产清单
+
+| 分类 | 数量 | 说明 |
+|---|---:|---|
+| Skills | 20 | 交易、Amazon、会话交接、公开网页浏览、caveman、find-skills、grill-me |
+| Commands | 16 | 用户触发的工作流与 caveman 入口 |
+| Agents | 7 | 3 个主 Agent，4 个只读 subagent |
+| 自定义 tools | 3 | `safe-output`、`runtime-preflight`、`market-data` |
+
+默认主 Agent 为 `opencode-default`。每个 skill 都声明 `compatibility: opencode`，并带 Vault 访问与输出策略元数据。
+
 ## 环境要求
 
 - Node.js `>=22.20.0`
 - Python 3.11+
 - 数据流程需要 `pandas`、`numpy`、`openpyxl`、`PyYAML`、`akshare`
-- 浏览器 MCP 或 `bsk` 仅在用户明确要求浏览器操作时使用
+- 浏览器 MCP 仅用于公开页面，且由用户触发
 
 安装仓库依赖：
 

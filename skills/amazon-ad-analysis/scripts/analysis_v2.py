@@ -3,11 +3,19 @@
 亚马逊广告分析脚本 v2.0
 改进版：修复数据清洗bug，增强列名自动检测，支持配置外部化
 
+输出路径规则（safe_output_path）:
+    - 省略 --output：写入 OpenCode 输出根 $OPENCODE_OUTPUT_ROOT（缺省
+      ~/.config/opencode/outputs）下的 amazon/ad-analysis/；
+    - 绝对路径：显式指定，仅校验 Vault / Vault-like / 路径穿越；
+    - 纯文件名（无分隔符）：同样落到上述输出目录；
+    - 其他相对路径（CWD 隐式输出）、含 '..' 的穿越路径、VAULT_PATH 之内或
+      命中 Vault-like 目录段（大小写/全角不敏感）一律拒绝。
+
 用法:
     # 完整分析（占位，未实现；run 会提示改用下方子命令组合）
     python analysis_v2.py run --product product.xlsx --ad ad.xlsx --search search.xlsx --brand brand.xlsx
 
-    # 仅数据清洗
+    # 仅数据清洗（--output 省略或只给文件名时写入 OpenCode 输出根）
     python analysis_v2.py clean --input raw.xlsx --output cleaned.xlsx --report
 
     # 仅词根分析
@@ -22,8 +30,8 @@
     # 数据验证
     python analysis_v2.py validate --input product.xlsx
 
-    # 生成配置文件模板（默认 ./analysis_config.template.yaml，勿指向正式 config）
-    python analysis_v2.py init-config --output ./analysis_config.template.yaml
+    # 生成配置文件模板（省略 --output 时写入 OpenCode 输出根，勿指向正式 config）
+    python analysis_v2.py init-config --output analysis_config.template.yaml
 
 依赖:
     pip install pandas openpyxl pyyaml
@@ -41,9 +49,36 @@ import os
 import sys
 import time
 import pickle
+import unicodedata
 from typing import Dict, List, Optional, Tuple, Any
 
-FORBIDDEN_PARTS = {'.obsidian', '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理'}
+# 禁止写入的 Vault-like 目录段 / 文件名（判定时统一做 NFKC + casefold，故此处大小写与全角不敏感）
+FORBIDDEN_PARTS = {
+    '.obsidian', '.trash', '工作',
+    '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理',
+}
+FORBIDDEN_NAMES = {'memory.md'}
+
+OUTPUT_SUBDIR = ('amazon', 'ad-analysis')
+OPENCODE_CONFIG_ROOT = Path.home() / '.config' / 'opencode'
+
+
+def _fold(value) -> str:
+    return unicodedata.normalize('NFKC', str(value)).casefold()
+
+
+FORBIDDEN_PARTS_FOLDED = frozenset(_fold(part) for part in FORBIDDEN_PARTS)
+FORBIDDEN_NAMES_FOLDED = frozenset(_fold(name) for name in FORBIDDEN_NAMES)
+
+
+def opencode_output_root() -> Path:
+    """OpenCode 非 Vault 输出根：优先 OPENCODE_OUTPUT_ROOT。"""
+    root = os.environ.get('OPENCODE_OUTPUT_ROOT') or str(OPENCODE_CONFIG_ROOT / 'outputs')
+    return Path(root).expanduser().resolve()
+
+
+def default_output_dir() -> Path:
+    return opencode_output_root().joinpath(*OUTPUT_SUBDIR)
 
 
 def is_within(parent: Path, child: Path) -> bool:
@@ -55,11 +90,37 @@ def is_within(parent: Path, child: Path) -> bool:
 
 
 def safe_output_path(raw):
-    target = Path(raw).expanduser().resolve()
+    """校验输出路径。
+
+    规则：
+    - 绝对路径：用户显式指定，仅需通过 Vault / Vault-like / 穿越校验；
+    - 纯文件名（不含分隔符）：落到本技能 OpenCode 输出目录；
+    - 其他相对路径：属于 CWD 隐式输出，拒绝；
+    - 含 `..` 段：路径穿越，拒绝；
+    - VAULT_PATH 之内或命中 Vault-like 段（含大小写/全角变体）：拒绝。
+    """
+    if raw is None or not str(raw).strip():
+        raise ValueError('输出路径为空')
+    text = str(raw).strip()
+    candidate = Path(text).expanduser()
+    if '..' in candidate.parts:
+        raise ValueError(f'路径穿越被拒绝: {text}')
+    if not candidate.is_absolute():
+        is_bare_name = len(candidate.parts) == 1 and not text.startswith(('.\\', './'))
+        if not is_bare_name:
+            raise ValueError(
+                f'拒绝 CWD 隐式输出: {text}；请改用绝对非 Vault 路径、'
+                f'只给文件名（写入 {default_output_dir()}），或省略该参数'
+            )
+        candidate = default_output_dir() / candidate.name
+    target = candidate.resolve()
     vault = os.environ.get('VAULT_PATH')
     if vault and is_within(Path(vault).expanduser().resolve(), target):
         raise ValueError(f'Vault write denied: {target}')
-    if any(part in FORBIDDEN_PARTS for part in target.parts) or target.name == 'MEMORY.md':
+    hit = {_fold(part) for part in target.parts} & FORBIDDEN_PARTS_FOLDED
+    if hit:
+        raise ValueError(f'Vault-like write denied: {target}（命中段: {", ".join(sorted(hit))}）')
+    if _fold(target.name) in FORBIDDEN_NAMES_FOLDED:
         raise ValueError(f'Vault-like write denied: {target}')
     return target
 
@@ -69,9 +130,22 @@ def read_table(raw):
     suffix = path.suffix.lower()
     if suffix == '.csv':
         return pd.read_csv(path)
-    if suffix in {'.xlsx', '.xls', '.xlsm'}:
-        return pd.read_excel(path)
-    raise ValueError(f'unsupported input type: {suffix}')
+    if suffix in {'.xlsx', '.xlsm'}:
+        return _read_excel_with_engine(path, 'openpyxl', suffix)
+    if suffix == '.xls':
+        # 旧版 BIFF 格式由 xlrd 提供；未安装时直接说明，不伪装支持
+        return _read_excel_with_engine(path, 'xlrd', suffix)
+    raise ValueError(f'unsupported input type: {suffix} (支持 .csv/.xlsx/.xlsm/.xls)')
+
+
+def _read_excel_with_engine(path: Path, engine: str, suffix: str):
+    import importlib.util
+    if importlib.util.find_spec(engine) is None:
+        raise ValueError(
+            f'读取 {suffix} 需要 {engine}：pip install {engine}；'
+            f'或先用 Excel 另存为 .xlsx 再重试'
+        )
+    return pd.read_excel(path, engine=engine)
 
 
 def write_dataframe(frame, raw, index=False):
@@ -82,18 +156,18 @@ def write_dataframe(frame, raw, index=False):
 
 
 def default_output_path(name):
-    root = os.environ.get('OPENCODE_OUTPUT_ROOT') or str(Path.home() / '.config' / 'opencode' / 'outputs' / 'amazon' / 'ad-analysis')
-    return safe_output_path(Path(root) / name)
+    return safe_output_path(default_output_dir() / Path(name).name)
+
 
 class ConfigLoader:
     """配置加载器"""
-
+    
     DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / 'config' / 'analysis_config.yaml'
-
+    
     def __init__(self, config_path=None):
         self.config_path = config_path or self.DEFAULT_CONFIG_PATH
         self.config = self._load_config()
-
+    
     def _load_config(self):
         """加载配置文件"""
         try:
@@ -107,7 +181,7 @@ class ConfigLoader:
         except ImportError:
             print("警告: 未安装pyyaml，使用默认配置")
             return self._default_config()
-
+    
     def _default_config(self):
         """默认配置"""
         return {
@@ -116,11 +190,11 @@ class ConfigLoader:
                 'cvr': {'good': 0.15, 'average': 0.10}
             },
             'output': {
-                'directory': './output',
+                'directory': str(default_output_dir()),
                 'save_checkpoints': True
             }
         }
-
+    
     def get(self, key, default=None):
         """获取配置项"""
         keys = key.split('.')
@@ -131,15 +205,15 @@ class ConfigLoader:
             else:
                 return default
         return value if value is not None else default
-
+    
     def get_threshold(self, metric, level):
         """获取阈值"""
         return self.get(f'thresholds.{metric}.{level}')
-
+    
     def get_column_mapping(self, file_type):
         """获取列名映射"""
         return self.get(f'column_mapping.{file_type}', {})
-
+    
     def get_category_config(self, category):
         """获取品类配置"""
         return self.get(f'categories.{category}', {})
@@ -151,7 +225,7 @@ class ConfigLoader:
 
 class ColumnMapper:
     """列名自动检测和映射"""
-
+    
     # 默认列名映射规则（优先级从高到低）
     DEFAULT_COLUMN_PATTERNS = {
         'asin': ['ASIN', 'asin', 'Asin'],
@@ -184,20 +258,20 @@ class ColumnMapper:
         'start_date': ['开始日期', 'Start Date', 'start_date'],
         'end_date': ['结束日期', 'End Date', 'end_date'],
     }
-
+    
     def __init__(self, df, config=None, file_type='product'):
         self.df = df
         self.columns = list(df.columns)
         self.mapping = {}
-
+        
         # 从配置加载列名映射（按文件类型：product / ad / search / brand）
         if config:
             self.config_patterns = config.get_column_mapping(file_type)
         else:
             self.config_patterns = {}
-
+        
         self._detect_all()
-
+    
     def _detect_all(self):
         """自动检测所有列"""
         # 首先使用配置中的映射
@@ -207,7 +281,7 @@ class ColumnMapper:
                     if pattern in self.columns:
                         self.mapping[col_type] = pattern
                         break
-
+        
         # 然后使用默认映射（补充未检测到的列）
         for col_type, patterns in self.DEFAULT_COLUMN_PATTERNS.items():
             if col_type not in self.mapping:
@@ -215,18 +289,18 @@ class ColumnMapper:
                     if pattern in self.columns:
                         self.mapping[col_type] = pattern
                         break
-
+    
     def get(self, col_type, default=None):
         """获取列名"""
         return self.mapping.get(col_type, default)
-
+    
     def get_column(self, col_type):
         """获取列数据"""
         col_name = self.get(col_type)
         if col_name:
             return self.df[col_name]
         return None
-
+    
     def validate_required(self, required_cols):
         """验证必需列是否存在"""
         missing = []
@@ -234,7 +308,7 @@ class ColumnMapper:
             if col_type not in self.mapping:
                 missing.append(col_type)
         return missing
-
+    
     def print_mapping(self):
         """打印映射结果"""
         print("列名映射结果:")
@@ -258,28 +332,28 @@ def smart_percentage_convert(value):
     """
     if pd.isna(value):
         return np.nan
-
+    
     if isinstance(value, (int, float)):
         # 已经是数值
         if value > 1:
             # 可能是百分比形式（如21.90表示21.90%）
             return value / 100
         return value
-
+    
     if isinstance(value, str):
         value = value.strip()
-
+        
         # 特殊值处理
         if value in ['--', '-', 'N/A', 'nan', '']:
             return 0
-
+        
         # 带%的字符串
         if '%' in value:
             try:
                 return float(value.replace('%', '')) / 100
             except ValueError:
                 return np.nan
-
+        
         # 纯数字字符串
         try:
             num = float(value)
@@ -289,64 +363,64 @@ def smart_percentage_convert(value):
             return num
         except ValueError:
             return np.nan
-
+    
     return np.nan
 
 
 def clean_percentage_columns(df, columns):
     """批量清洗百分比列"""
     df_clean = df.copy()
-
+    
     for col in columns:
         if col in df_clean.columns:
             df_clean[col] = df_clean[col].apply(smart_percentage_convert)
-
+            
             # 验证转换结果
             valid_count = df_clean[col].notna().sum()
             if valid_count == 0:
                 print(f"警告: 列 {col} 转换后全部为NaN")
-
+    
     return df_clean
 
 
 def clean_currency_columns(df, columns):
     """清洗货币列，移除符号并转换为数值"""
     df_clean = df.copy()
-
+    
     for col in columns:
         if col in df_clean.columns:
             if df_clean[col].dtype == object:
                 # 移除货币符号、逗号等
                 df_clean[col] = df_clean[col].astype(str).str.replace('$', '').str.replace(',', '').str.replace('--', '0')
                 df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
-
+    
     return df_clean
 
 
 def clean_dataframe(df, file_type='product', config=None):
     """
     清洗单个DataFrame（改进版）
-
+    
     Args:
         df: 原始DataFrame
         file_type: 文件类型 ('product', 'ad', 'search', 'brand')
         config: 配置对象
-
+    
     Returns:
         清洗后的DataFrame
     """
     df_clean = df.copy()
-
+    
     # 1. 替换特殊值
     df_clean = df_clean.replace(['--', '-', 'N/A', 'nan', ''], np.nan)
-
+    
     # 2. 创建列名映射器
     mapper = ColumnMapper(df_clean, config)
-
+    
     # 3. 根据文件类型确定需要清洗的列
     percentage_cols = []
     numeric_cols = []
-
+    
     if file_type == 'product':
         # ROAS 是倍数不是百分比，禁止 ÷100（bug 修复：原先在 percentage_cols 会把 3.5 变成 0.035）
         percentage_cols = ['cvr', 'acos', 'tacos', 'ctr']
@@ -360,24 +434,24 @@ def clean_dataframe(df, file_type='product', config=None):
     elif file_type == 'brand':
         percentage_cols = []  # 品牌广告归因文件中的百分比列需要特殊处理
         numeric_cols = ['sales_14d', 'orders_14d', 'units_14d', 'new_customer_sales', 'new_customer_orders', 'new_customer_units']
-
+    
     # 4. 清洗百分比列
     for col_type in percentage_cols:
         col_name = mapper.get(col_type)
         if col_name:
             df_clean[col_name] = df_clean[col_name].apply(smart_percentage_convert)
-
+    
     # 5. 清洗数值列
     for col_type in numeric_cols:
         col_name = mapper.get(col_type)
         if col_name:
             df_clean[col_name] = pd.to_numeric(df_clean[col_name], errors='coerce').fillna(0)
-
+    
     # 6. 日期处理
     date_col = mapper.get('date')
     if date_col:
         df_clean[date_col] = pd.to_datetime(df_clean[date_col], errors='coerce')
-
+    
     return df_clean
 
 
@@ -391,58 +465,58 @@ def detect_search_term_format(df):
     返回: 'single_date', 'date_range', 'unknown'
     """
     columns = list(df.columns)
-
+    
     # 检查是否有开始日期和结束日期列
     has_start_date = any('开始日期' in col or 'Start Date' in col for col in columns)
     has_end_date = any('结束日期' in col or 'End Date' in col for col in columns)
-
+    
     if has_start_date and has_end_date:
         return 'date_range'
-
+    
     # 检查是否有单个日期列
     has_date = any('日期' in col or 'Date' in col for col in columns)
     if has_date:
         return 'single_date'
-
+    
     return 'unknown'
 
 
 def filter_single_day_rows(df, date_format='auto'):
     """
     过滤搜索词报告中的单日行
-
+    
     Args:
         df: 搜索词数据
         date_format: 'auto', 'single_date', 'date_range'
-
+    
     Returns:
         过滤后的DataFrame（仅包含单日行）
     """
     if date_format == 'auto':
         date_format = detect_search_term_format(df)
-
+    
     if date_format == 'single_date':
         # 只有单个日期列，假设都是单日行
         return df.copy()
-
+    
     elif date_format == 'date_range':
         # 有开始日期和结束日期列
         mapper = ColumnMapper(df)
         start_date_col = mapper.get('start_date')
         end_date_col = mapper.get('end_date')
-
+        
         if start_date_col and end_date_col:
             # 过滤单日行：开始日期 == 结束日期
             mask = df[start_date_col] == df[end_date_col]
             single_day_df = df[mask].copy()
-
+            
             print(f"搜索词行类型统计:")
             print(f"  总行数: {len(df)}")
             print(f"  单日行: {len(single_day_df)}")
             print(f"  多日行: {len(df) - len(single_day_df)}")
-
+            
             return single_day_df
-
+    
     # 默认返回原数据
     return df.copy()
 
@@ -454,17 +528,17 @@ def filter_single_day_rows(df, date_format='auto'):
 def validate_data(df, file_type='product', config=None):
     """
     验证数据完整性
-
+    
     Args:
         df: DataFrame
         file_type: 文件类型
         config: 配置对象
-
+    
     Returns:
         dict: {'valid': bool, 'issues': list, 'row_count': int}
     """
     issues = []
-
+    
     # 获取必需列配置
     if config:
         required_cols = config.get(f'validation.required_columns.{file_type}', [])
@@ -477,18 +551,18 @@ def validate_data(df, file_type='product', config=None):
             'brand': ['asin']
         }
         required_cols = required_cols_map.get(file_type, [])
-
+    
     # 检查必需列
     mapper = ColumnMapper(df, config)
     missing = mapper.validate_required(required_cols)
     if missing:
         issues.append(f"缺少必需列: {missing}")
-
+    
     # 检查数据量
     min_rows = config.get('validation.min_rows', 10) if config else 10
     if len(df) < min_rows:
         issues.append(f"数据量过少: {len(df)} 行，建议至少 {min_rows} 行")
-
+    
     # 检查空值比例
     max_null_pct = config.get('validation.max_null_percentage', 0.5) if config else 0.5
     for col_type in required_cols:
@@ -497,7 +571,7 @@ def validate_data(df, file_type='product', config=None):
             null_pct = df[col_name].isna().mean()
             if null_pct > max_null_pct:
                 issues.append(f"列 {col_name} 空值比例过高: {null_pct:.1%}")
-
+    
     return {
         'valid': len(issues) == 0,
         'issues': issues,
@@ -532,32 +606,32 @@ def extract_keyword_roots(search_term, compound_roots=None):
     """从搜索词中提取词根（可重叠）"""
     if compound_roots is None:
         compound_roots = []
-
+    
     term = str(search_term).lower().strip()
     roots = set()
-
+    
     # 1. 提取ASIN（仅 b0 开头的 10 位，避免把 waterproof 等 10 字母普通词误判为 ASIN）
     asins = re.findall(r'\bb0[a-z0-9]{8}\b', term)
     roots.update(asins)
-
+    
     # 2. 匹配组合词根
     for compound in compound_roots:
         if compound.lower() in term:
             roots.add(compound.lower())
-
+    
     # 3. 提取单个词根
     words = re.findall(r'[a-z0-9]+', term)
     for word in words:
         if word not in STOP_WORDS and len(word) > 1:
             roots.add(word)
-
+    
     # 4. 生成2-gram组合词根
     for i in range(len(words) - 1):
         if words[i] not in STOP_WORDS and words[i + 1] not in STOP_WORDS:
             bigram = f"{words[i]} {words[i + 1]}"
             if len(bigram) > 3:
                 roots.add(bigram)
-
+    
     return roots
 
 
@@ -565,49 +639,49 @@ def aggregate_by_roots(search_df, compound_roots=None, config=None):
     """按词根聚合搜索词表现数据"""
     # 自动检测列名（file_type='search'，映射见 config column_mapping.search 与 DEFAULT 补充）
     mapper = ColumnMapper(search_df, config, file_type='search')
-
+    
     root_stats = defaultdict(lambda: {
         'search_terms': set(), 'impressions': 0, 'clicks': 0,
         'spend': 0, 'orders': 0, 'sales': 0
     })
-
+    
     for _, row in search_df.iterrows():
         term = str(row[mapper.get('search_term', '')])
         roots = extract_keyword_roots(term, compound_roots)
-
+        
         for root in roots:
             stats = root_stats[root]
             stats['search_terms'].add(term)
-
+            
             impressions = mapper.get('impressions')
             if impressions:
                 stats['impressions'] += row.get(impressions, 0)
-
+            
             clicks = mapper.get('clicks')
             if clicks:
                 stats['clicks'] += row.get(clicks, 0)
-
+            
             spend = mapper.get('spend')
             if spend:
                 stats['spend'] += row.get(spend, 0)
-
+            
             orders = mapper.get('orders') or mapper.get('orders_7d')
             if orders:
                 stats['orders'] += row.get(orders, 0)
-
+            
             sales = mapper.get('sales') or mapper.get('sales_7d')
             if sales:
                 stats['sales'] += row.get(sales, 0)
-
+    
     # 转换为DataFrame
     result = []
     for root, stats in root_stats.items():
         cvr = stats['orders'] / stats['clicks'] * 100 if stats['clicks'] > 0 else 0
         acos = stats['spend'] / stats['sales'] * 100 if stats['sales'] > 0 else 0
-
+        
         # 执行建议
         suggestion = get_root_suggestion(acos, stats['orders'], stats['spend'])
-
+        
         result.append({
             '词根': root,
             '搜索词数': len(stats['search_terms']),
@@ -620,7 +694,7 @@ def aggregate_by_roots(search_df, compound_roots=None, config=None):
             'ACOS': round(acos, 2),
             '执行建议': suggestion
         })
-
+    
     return pd.DataFrame(result).sort_values('ACOS')
 
 
@@ -649,16 +723,16 @@ def get_root_suggestion(acos, orders, spend):
 def generate_negation_list(root_df):
     """生成否定词执行清单"""
     negations = []
-
+    
     for _, row in root_df.iterrows():
         root = row['词根']
         acos = row['ACOS']
         spend = row['花费']
         orders = row['订单']
         clicks = row['点击量']
-
+        
         neg_type = '词组' if len(str(root).split()) > 1 else '精确'
-
+        
         # P0-紧急：ACOS>150% 且 花费>$20
         if acos > 150 and spend > 20:
             negations.append({
@@ -707,14 +781,14 @@ def generate_negation_list(root_df):
                 '优先级': 'P3-低',
                 '否定理由': f'{root} 花费${spend:.2f}，{clicks}次点击，0订单'
             })
-
+    
     result = pd.DataFrame(negations)
     if len(result) > 0:
         # 按优先级排序
         priority_order = {'P0-紧急': 0, 'P1-高': 1, 'P2-中': 2, 'P3-低': 3}
         result['排序键'] = result['优先级'].map(priority_order)
         result = result.sort_values('排序键').drop(columns=['排序键'])
-
+    
     return result
 
 
@@ -749,17 +823,17 @@ def analyze_keyword_coverage(root_df, listing_data):
     bullets_kw = extract_listing_keywords(' '.join(listing_data.get('bullets', [])))
     aplus_kw = extract_listing_keywords(listing_data.get('aplus', ''))
     desc_kw = extract_listing_keywords(listing_data.get('description', ''))
-
+    
     results = []
     for _, row in root_df.iterrows():
         root = str(row['词根']).lower()
         acos = row['ACOS']
         orders = row['订单']
         spend = row['花费']
-
+        
         # 检查覆盖情况
         root_words = set(root.split())
-
+        
         if root in title_kw or root_words.issubset(title_kw):
             coverage = '✅'
             position = '标题'
@@ -784,12 +858,12 @@ def analyze_keyword_coverage(root_df, listing_data):
             coverage = '❌'
             position = '无'
             weight = '-'
-
+        
         # 生成优化建议
         suggestion, reason = get_coverage_suggestion(
             coverage, position, acos, orders, root
         )
-
+        
         results.append({
             '词根': row['词根'],
             '搜索词ACOS': acos,
@@ -801,7 +875,7 @@ def analyze_keyword_coverage(root_df, listing_data):
             '优化建议': suggestion,
             '原因': reason
         })
-
+    
     return pd.DataFrame(results)
 
 
@@ -831,7 +905,7 @@ def generate_quality_report(df):
         'missing_values': {},
         'anomalies': {},
     }
-
+    
     # 缺失值统计
     for col in df.columns:
         missing = df[col].isna().sum()
@@ -840,10 +914,10 @@ def generate_quality_report(df):
                 'count': int(missing),
                 'percentage': round(missing / len(df) * 100, 2)
             }
-
+    
     # 异常值检测
     mapper = ColumnMapper(df)
-
+    
     acos_col = mapper.get('acos')
     if acos_col:
         acos_values = pd.to_numeric(df[acos_col], errors='coerce').dropna()
@@ -854,7 +928,7 @@ def generate_quality_report(df):
                 'threshold': '>100%',
                 'examples': high_acos.head(5).tolist()
             }
-
+    
     cpc_col = mapper.get('cpc')
     if cpc_col:
         cpc_values = pd.to_numeric(df[cpc_col], errors='coerce').dropna()
@@ -865,7 +939,7 @@ def generate_quality_report(df):
                 'threshold': '>$5',
                 'examples': high_cpc.head(5).tolist()
             }
-
+    
     return report
 
 
@@ -884,14 +958,14 @@ def main():
 
     parser = argparse.ArgumentParser(description='亚马逊广告分析工具 v2.0')
     subparsers = parser.add_subparsers(dest='command', help='子命令')
-
+    
     # clean 子命令
     clean_parser = subparsers.add_parser('clean', help='数据清洗')
     clean_parser.add_argument('--input', '-i', required=True, help='输入 CSV 或 Excel 文件路径')
     clean_parser.add_argument('--output', '-o', help='输出文件路径')
     clean_parser.add_argument('--report', action='store_true', help='输出数据质量报告')
     clean_parser.add_argument('--config', '-c', help='配置文件路径')
-
+    
     # roots 子命令
     roots_parser = subparsers.add_parser('roots', help='词根分析')
     roots_parser.add_argument('--input', '-i', required=True, help='输入搜索词 CSV 或 Excel')
@@ -901,7 +975,7 @@ def main():
                               help='产品品类（用于组合词根配置）')
     roots_parser.add_argument('--top-n', type=int, default=50, help='展示前 N 个词根')
     roots_parser.add_argument('--config', help='配置文件路径')
-
+    
     # negations 子命令
     neg_parser = subparsers.add_parser('negations', help='生成否定词清单')
     neg_parser.add_argument('--input', '-i', required=True, help='输入搜索词 CSV 或 Excel')
@@ -910,7 +984,7 @@ def main():
                             choices=['usb_hub', 'electronics', 'home', 'custom'],
                             help='产品品类')
     neg_parser.add_argument('--config', help='配置文件路径')
-
+    
     # coverage 子命令
     cov_parser = subparsers.add_parser('coverage', help='关键词覆盖分析')
     cov_parser.add_argument('--input', '-i', required=True, help='输入搜索词 CSV 或 Excel')
@@ -920,7 +994,7 @@ def main():
                             choices=['usb_hub', 'electronics', 'home', 'custom'],
                             help='产品品类')
     cov_parser.add_argument('--config', help='配置文件路径')
-
+    
     # validate 子命令
     val_parser = subparsers.add_parser('validate', help='数据验证')
     val_parser.add_argument('--input', '-i', required=True, help='输入 CSV 或 Excel 文件路径')
@@ -928,38 +1002,39 @@ def main():
                            choices=['product', 'ad', 'search', 'brand'],
                            help='数据类型')
     val_parser.add_argument('--config', help='配置文件路径')
-
+    
     # run 子命令（完整分析）
     run_parser = subparsers.add_parser('run', help='完整分析')
     run_parser.add_argument('--product', help='产品表现文件路径')
     run_parser.add_argument('--ad', help='广告表现文件路径')
     run_parser.add_argument('--search', help='搜索词文件路径')
     run_parser.add_argument('--brand', help='品牌广告归因文件路径')
-    run_parser.add_argument('--output', '-o', default='./output', help='输出目录')
+    run_parser.add_argument('--output', '-o', default=None,
+                            help=f'输出目录（默认 OpenCode 输出根: {default_output_dir()}）')
     run_parser.add_argument('--config', '-c', help='配置文件路径')
-
+    
     # init-config 子命令
     init_parser = subparsers.add_parser('init-config', help='生成配置文件模板')
     init_parser.add_argument('--output', '-o', help='非 Vault 输出路径；省略时使用 OpenCode 输出目录')
-
+    
     args = parser.parse_args()
-
+    
     if not args.command:
         parser.print_help()
         return
-
+    
     # 加载配置
     config = None
     if hasattr(args, 'config') and args.config:
         config = ConfigLoader(args.config)
     else:
         config = ConfigLoader()
-
+    
     # 执行命令
     if args.command == 'clean':
         df = read_table(args.input)
         df_clean = clean_dataframe(df, 'product', config)
-
+        
         if args.output:
             write_dataframe(df_clean, args.output)
             print(f"清洗完成: {len(df_clean)} 行，已保存到 {args.output}")
@@ -967,7 +1042,7 @@ def main():
             output_path = default_output_path(f"{Path(args.input).stem}_cleaned.xlsx")
             write_dataframe(df_clean, output_path)
             print(f"清洗完成: {len(df_clean)} 行，已保存到 {output_path}")
-
+        
         if args.report:
             report = generate_quality_report(df_clean)
             print(f"\n数据质量报告:")
@@ -977,87 +1052,87 @@ def main():
                 print(f"  缺失值列: {list(report['missing_values'].keys())}")
             if report['anomalies']:
                 print(f"  异常值: {list(report['anomalies'].keys())}")
-
+    
     elif args.command == 'roots':
         df = read_table(args.input)
         df = clean_dataframe(df, 'search', config)
-
+        
         # 获取品类配置
         category_config = config.get_category_config(args.category)
         compound_roots = category_config.get('compound_roots', [])
-
+        
         roots_df = aggregate_by_roots(df, compound_roots, config)
-
+        
         if args.output:
             write_dataframe(roots_df.head(args.top_n), args.output)
         else:
             output_path = default_output_path(f"{Path(args.input).stem}_roots.xlsx")
             write_dataframe(roots_df.head(args.top_n), output_path)
-
+        
         # 打印摘要
         print(f"词根分析完成: {len(roots_df)} 个词根")
         print(f"\n高效词根 (ACOS<20%, 订单>=3):")
         good = roots_df[(roots_df['ACOS'] < 20) & (roots_df['订单'] >= 3)]
         for _, row in good.head(10).iterrows():
             print(f"  {row['词根']}: ACOS={row['ACOS']}%, 订单={row['订单']}, 花费=${row['花费']}")
-
+        
         print(f"\n低效词根 (ACOS>50% 或 无订单):")
         bad = roots_df[(roots_df['ACOS'] > 50) | ((roots_df['订单'] == 0) & (roots_df['花费'] > 5))]
         for _, row in bad.head(10).iterrows():
             print(f"  {row['词根']}: ACOS={row['ACOS']}%, 订单={row['订单']}, 花费=${row['花费']}")
-
+    
     elif args.command == 'negations':
         df = read_table(args.input)
         df = clean_dataframe(df, 'search', config)
-
+        
         # 获取品类配置
         category_config = config.get_category_config(args.category)
         compound_roots = category_config.get('compound_roots', [])
-
+        
         roots_df = aggregate_by_roots(df, compound_roots, config)
         neg_df = generate_negation_list(roots_df)
-
+        
         if args.output:
             write_dataframe(neg_df, args.output)
         else:
             output_path = default_output_path(f"{Path(args.input).stem}_negations.xlsx")
             write_dataframe(neg_df, output_path)
-
+        
         print(f"否定词清单生成完成: {len(neg_df)} 个词根")
         for _, row in neg_df.head(10).iterrows():
             print(f"  [{row['优先级']}] {row['否定词根']}: {row['否定理由']}")
-
+    
     elif args.command == 'coverage':
         df = read_table(args.input)
         df = clean_dataframe(df, 'search', config)
-
+        
         with open(args.listing, 'r', encoding='utf-8') as f:
             listing_data = json.load(f)
-
+        
         # 获取品类配置
         category_config = config.get_category_config(args.category)
         compound_roots = category_config.get('compound_roots', [])
-
+        
         roots_df = aggregate_by_roots(df, compound_roots, config)
         coverage_df = analyze_keyword_coverage(roots_df, listing_data)
-
+        
         if args.output:
             write_dataframe(coverage_df, args.output)
         else:
             output_path = default_output_path(f"{Path(args.input).stem}_coverage.xlsx")
             write_dataframe(coverage_df, output_path)
-
+        
         # 打印摘要
         covered = len(coverage_df[coverage_df['前台覆盖'] == '✅'])
         partial = len(coverage_df[coverage_df['前台覆盖'] == '部分'])
         uncovered = len(coverage_df[coverage_df['前台覆盖'] == '❌'])
         total = len(coverage_df)
-
+        
         print(f"关键词覆盖分析完成:")
         print(f"  已覆盖: {covered}/{total} ({covered / total * 100:.1f}%)")
         print(f"  部分覆盖: {partial}/{total} ({partial / total * 100:.1f}%)")
         print(f"  未覆盖: {uncovered}/{total} ({uncovered / total * 100:.1f}%)")
-
+        
         # 需要加入前台的高效词根
         need_add = coverage_df[
             (coverage_df['前台覆盖'] == '❌') &
@@ -1068,26 +1143,27 @@ def main():
             print(f"\n需加入前台的高效词根:")
             for _, row in need_add.head(5).iterrows():
                 print(f"  {row['词根']}: ACOS={row['搜索词ACOS']}%, 建议{row['优化建议']}")
-
+    
     elif args.command == 'validate':
         df = read_table(args.input)
         result = validate_data(df, args.type, config)
-
+        
         if result['valid']:
             print(f"数据验证通过: {result['row_count']} 行")
         else:
             print(f"数据验证失败:")
             for issue in result['issues']:
                 print(f"  - {issue}")
-
+    
     elif args.command == 'run':
-        print('run 由 OpenCode agent 按 SKILL.md 编排；脚本子命令可独立执行：')
+        output_dir = safe_output_path(args.output) if args.output else default_output_dir()
+        print(f'run 由 OpenCode agent 按 SKILL.md 编排；脚本子命令可独立执行（输出目录: {output_dir}）：')
         print('  clean --input <product.xlsx> --output <non-vault.xlsx> --report')
         print('  roots --input <search.csv> --output <non-vault.xlsx>')
         print('  negations --input <search.csv> --output <non-vault.xlsx>')
         print('  coverage --input <search.csv> --listing <listing.json> --output <non-vault.xlsx>')
         print('  validate --input <product.csv> --type product')
-
+    
     elif args.command == 'init-config':
         config_template = ConfigLoader._default_config(None)
         target = safe_output_path(args.output or default_output_path('analysis_config.template.yaml'))

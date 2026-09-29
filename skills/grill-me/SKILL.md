@@ -7,6 +7,11 @@ description: |-
   熔断：用户明确要求直接执行、日常问答、小改动或单一查询时不触发。
   被动只出 1 轮 ≤5 问（附推荐答案），用户说"继续"才进完整多轮。
   Use when the user asks to clarify requirements, interview them, or resolve decisions in a multi-step goal; do not use for simple questions or small edits.
+compatibility: opencode
+metadata:
+  vault-access: read-only
+  output-policy: opencode-non-vault
+
 ---
 
 ## 模式判定（先于一切）

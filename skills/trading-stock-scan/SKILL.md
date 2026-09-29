@@ -10,18 +10,14 @@ metadata:
   output-policy: opencode-non-vault
 ---
 
-## OpenCode 双端执行约定
-
-本文中的 `powershell` 代码块是 Windows 示例；macOS 使用 `bash`/`zsh`。统一先设置 `SKILL_ROOT` 和 `PY`：Windows 使用 `$env:USERPROFILE\.config\opencode\skills\<skill>` 与 `python`，macOS 使用 `$HOME/.config/opencode/skills/<skill>` 与 `python3`。优先使用 `runtime-preflight`、`safe-output` 和 `market-data` 工具；不要把示例中的路径直接复制到另一端。输出必须位于本机 OpenCode 输出根，Vault 默认只读。
-
 # OpenCode 执行边界
 
 1. Vault、wiki、entity、持仓和交易计划文件只读。
-2. 禁止创建、修改、移动、删除或回写任何 Obsidian 文件。
-3. 默认报告写入 `{OPENCODE_CONFIG_ROOT}\outputs\trading\stock-scan\`。
+2. 禁止创建、修改、移动、删除或回写任何 Obsidian 知识库文件。
+3. 默认报告写入 `{OPENCODE_OUTPUT_ROOT}/trading/stock-scan/`。
 4. 仅用户实际触发时访问公开行情、公告和新闻。
 5. 不访问账户、Cookie、Token 或交易凭据，不执行任何交易动作。
-6. 不调用 MiMo、DSH、Obsidian 或 domain-memory 专用工具。
+6. 不使用其他 Agent 专用工具、Obsidian 插件或外部记忆插件；行情统一走下方 OpenCode 入口。
 7. “已预授权纪律线”只能作为提醒，不得由本 skill 执行。
 
 # 个股深度扫描
@@ -58,6 +54,8 @@ node "$MK" kline "{symbol}" 101 30
 node "$MK" sector 20
 node "$MK" get "<公开页面 URL>"
 ```
+
+macOS 对应写法：`$MK="$HOME/.config/opencode/skills/_shared/opencode-market.mjs"`，其余子命令一致。也可直接使用 OpenCode 内置 `market-data` 工具（`index`、`stocks`、`sina`、`tencent`、`kline`、`sector`、`get`）。
 
 - 东方财富作为主要口径；
 - 新浪和腾讯交叉复核；
@@ -100,7 +98,7 @@ node "$MK" get "<公开页面 URL>"
 
 默认输出：
 
-`{OPENCODE_CONFIG_ROOT}\outputs\trading\stock-scan\YYYY-MM-DD-{股票名}-深度扫描.md`
+`{OPENCODE_OUTPUT_ROOT}/trading/stock-scan/YYYY-MM-DD-{股票名}-深度扫描.md`
 
 报告包含：
 

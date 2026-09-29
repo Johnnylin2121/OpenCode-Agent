@@ -10,16 +10,12 @@ metadata:
   output-policy: opencode-non-vault
 ---
 
-## OpenCode 双端执行约定
-
-本文中的 `powershell` 代码块是 Windows 示例；macOS 使用 `bash`/`zsh`。统一先设置 `SKILL_ROOT` 和 `PY`：Windows 使用 `$env:USERPROFILE\.config\opencode\skills\<skill>` 与 `python`，macOS 使用 `$HOME/.config/opencode/skills/<skill>` 与 `python3`。优先使用 `runtime-preflight`、`safe-output` 和 `market-data` 工具；不要把示例中的路径直接复制到另一端。输出必须位于本机 OpenCode 输出根，Vault 默认只读。
-
 # OpenCode 执行边界
 
 1. 输入文件只读；禁止修改、删除或移动用户原始数据。
 2. 禁止写入 Obsidian Vault、`MEMORY.md` 或任何 `工作/`、`交易体系/` 路径。
-3. 默认报告和清洗文件写入 `{OPENCODE_CONFIG_ROOT}\outputs\amazon\product-selection\`。
-4. 仅使用本地 Python 和 pandas/openpyxl；不依赖 MiMo、DSH、Obsidian 或 Amazon 账户。
+3. 默认报告和清洗文件写入 `{OPENCODE_OUTPUT_ROOT}/amazon/product-selection/`。
+4. 仅使用本地 Python 和 pandas/openpyxl；不依赖其他 Agent 专用工具、Obsidian 插件或 Amazon 账户。
 5. 生成的 Amazon 搜索链接只是公开链接，不自动打开、不抓取账户数据。
 6. 输入字段缺失时列出缺口，不用猜测值替代。
 
@@ -34,13 +30,15 @@ metadata:
 
 ## 运行时
 
-使用当前 OpenCode 技能目录和本机 `python`：
+使用 OpenCode 技能目录和本机 Python：
 
 ```powershell
 $SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-product-selection"
-$PY = "python"
+$PY = $env:OPENCODE_PYTHON; if (-not $PY) { $PY = "python" }
 & $PY "$SKILL\scripts\analysis.py" --help
 ```
+
+macOS 对应写法：技能目录为 `$HOME/.config/opencode/skills/amazon-product-selection`，解释器用 `python3` 或 `$OPENCODE_PYTHON`。运行前可先执行 `runtime-preflight`。
 
 大文件先使用 OpenCode 共享探查脚本：
 

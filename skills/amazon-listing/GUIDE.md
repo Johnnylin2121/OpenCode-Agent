@@ -18,8 +18,11 @@
 
 ```powershell
 $SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-listing"
-& python "$SKILL\scripts\kw_analysis.py" -i competitors.txt
+$PY = $env:OPENCODE_PYTHON; if (-not $PY) { $PY = "python" }
+& $PY "$SKILL\scripts\kw_analysis.py" -i competitors.txt
 ```
+
+macOS 对应写法：技能目录为 `$HOME/.config/opencode/skills/amazon-listing`，解释器用 `python3` 或 `$OPENCODE_PYTHON`。
 
 脚本输出词频，agent 再筛选 Top 10 并标注 category、function、attribute、material、scenario、audience。
 
@@ -59,7 +62,7 @@ $SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-listing"
 
 默认输出：
 
-`{OPENCODE_CONFIG_ROOT}\outputs\amazon\listing\YYYY-MM-DD-{ASIN}-{product}-listing.md`
+`{OPENCODE_OUTPUT_ROOT}/amazon/listing/YYYY-MM-DD-{ASIN}-{product}-listing.md`
 
 禁止写入 Obsidian、`工作/` 目录或 Amazon 账户。
 

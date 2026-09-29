@@ -3,8 +3,16 @@
 亚马逊选品分析脚本
 基于卖家精灵导出的关键词数据，执行趋势、机会、利润、综合评分分析。
 
+输出路径规则（safe_output_path）:
+    - 省略 --output/--output-dir：写入 OpenCode 输出根 $OPENCODE_OUTPUT_ROOT
+      （缺省 ~/.config/opencode/outputs）下的 amazon/product-selection/；
+    - 绝对路径：显式指定，仅校验 Vault / Vault-like / 路径穿越；
+    - 纯文件名（无分隔符）：同样落到上述输出目录；
+    - 其他相对路径（CWD 隐式输出）、含 '..' 的穿越路径、VAULT_PATH 之内或
+      命中 Vault-like 目录段（大小写/全角不敏感）一律拒绝。
+
 用法:
-    # 卖家精灵标准数据
+    # 卖家精灵标准数据（--output 只给文件名即写入 OpenCode 输出根）
     python analysis.py report --input data.xlsx --output report.md
     python analysis.py preprocess --input data.xlsx
 
@@ -18,6 +26,7 @@
 import argparse
 import os
 import sys
+import unicodedata
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -66,7 +75,33 @@ DEFAULT_PARAMS = {
 }
 
 
-FORBIDDEN_PARTS = {'.obsidian', '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理'}
+# 禁止写入的 Vault-like 目录段 / 文件名（判定时统一做 NFKC + casefold，故此处大小写与全角不敏感）
+FORBIDDEN_PARTS = {
+    '.obsidian', '.trash', '工作',
+    '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理',
+}
+FORBIDDEN_NAMES = {'memory.md'}
+
+OUTPUT_SUBDIR = ('amazon', 'product-selection')
+OPENCODE_CONFIG_ROOT = Path.home() / '.config' / 'opencode'
+
+
+def _fold(value) -> str:
+    return unicodedata.normalize('NFKC', str(value)).casefold()
+
+
+FORBIDDEN_PARTS_FOLDED = frozenset(_fold(part) for part in FORBIDDEN_PARTS)
+FORBIDDEN_NAMES_FOLDED = frozenset(_fold(name) for name in FORBIDDEN_NAMES)
+
+
+def opencode_output_root() -> Path:
+    """OpenCode 非 Vault 输出根：优先 OPENCODE_OUTPUT_ROOT。"""
+    root = os.environ.get('OPENCODE_OUTPUT_ROOT') or str(OPENCODE_CONFIG_ROOT / 'outputs')
+    return Path(root).expanduser().resolve()
+
+
+def default_output_dir() -> Path:
+    return opencode_output_root().joinpath(*OUTPUT_SUBDIR)
 
 
 def is_within(parent: Path, child: Path) -> bool:
@@ -77,19 +112,36 @@ def is_within(parent: Path, child: Path) -> bool:
         return False
 
 
-def safe_output_path(raw):
-    target = Path(raw).expanduser().resolve()
+def safe_output_path(raw) -> Path:
+    """校验输出路径：拒绝 Vault、Vault-like 段、路径穿越与 CWD 隐式输出。
+
+    绝对路径视为显式指定；纯文件名（无分隔符）落到本技能 OpenCode 输出目录；
+    其他相对路径（CWD 隐式输出）拒绝。
+    """
+    if raw is None or not str(raw).strip():
+        raise ValueError('输出路径为空')
+    text = str(raw).strip()
+    candidate = Path(text).expanduser()
+    if '..' in candidate.parts:
+        raise ValueError(f'路径穿越被拒绝: {text}')
+    if not candidate.is_absolute():
+        is_bare_name = len(candidate.parts) == 1 and not text.startswith(('.\\', './'))
+        if not is_bare_name:
+            raise ValueError(
+                f'拒绝 CWD 隐式输出: {text}；请改用绝对非 Vault 路径、'
+                f'只给文件名（写入 {default_output_dir()}），或省略该参数'
+            )
+        candidate = default_output_dir() / candidate.name
+    target = candidate.resolve()
     vault = os.environ.get('VAULT_PATH')
     if vault and is_within(Path(vault).expanduser().resolve(), target):
         raise ValueError(f'Vault write denied: {target}')
-    if any(part in FORBIDDEN_PARTS for part in target.parts) or target.name == 'MEMORY.md':
+    hit = {_fold(part) for part in target.parts} & FORBIDDEN_PARTS_FOLDED
+    if hit:
+        raise ValueError(f'Vault-like write denied: {target}（命中段: {", ".join(sorted(hit))}）')
+    if _fold(target.name) in FORBIDDEN_NAMES_FOLDED:
         raise ValueError(f'Vault-like write denied: {target}')
     return target
-
-
-def default_output_dir():
-    root = os.environ.get('OPENCODE_OUTPUT_ROOT') or str(Path.home() / '.config' / 'opencode' / 'outputs' / 'amazon' / 'product-selection')
-    return str(safe_output_path(root))
 
 # 品类分类规则
 CATEGORY_RULES = {
@@ -790,7 +842,7 @@ def get_action_suggestion(row: pd.Series) -> str:
 def filter_trend_market(df: pd.DataFrame, min_rank_change: int = 10000, min_growth_rate: float = 0.10) -> pd.DataFrame:
     """
     方法1：基于市场趋势选品
-
+    
     筛选条件：排名增长量近4周>10000，增长率>10%
     ABA数据映射：
     - 排名增长量 → 从"周变化量"提取4周前的值
@@ -832,7 +884,7 @@ def filter_trend_market(df: pd.DataFrame, min_rank_change: int = 10000, min_grow
 def filter_potential_market(df: pd.DataFrame, rank_min: int = 20000, rank_max: int = 100000, min_weekly_growth: float = 0.20) -> pd.DataFrame:
     """
     方法2：基于市场潜力选品
-
+    
     筛选条件：排名20000-100000，近1周增长率>20%
     ABA数据映射：
     - 排名 → 现排名
@@ -850,7 +902,7 @@ def filter_potential_market(df: pd.DataFrame, rank_min: int = 20000, rank_max: i
 def filter_surge_market(df: pd.DataFrame, min_weekly_growth: float = 0.50) -> pd.DataFrame:
     """
     方法3：基于搜索飙升选品
-
+    
     筛选条件：近1周增长率>50%
     ABA数据映射：
     - 周增长率 → 周变化率_lastweek
@@ -865,7 +917,7 @@ def filter_surge_market(df: pd.DataFrame, min_weekly_growth: float = 0.50) -> pd
 def filter_low_competition(df: pd.DataFrame, max_click_concentration: float = 50) -> pd.DataFrame:
     """
     方法4：基于市场竞争选品
-
+    
     筛选条件：点击集中度（前3名点击占比）<50%
     ABA数据映射：
     - 点击集中度 → 点击占比_合计
@@ -881,7 +933,7 @@ def filter_low_competition(df: pd.DataFrame, max_click_concentration: float = 50
 def filter_ad_cost(df: pd.DataFrame) -> pd.DataFrame:
     """
     方法5：基于营销成本选品
-
+    
     计算货流值 = PPC价格 / (PPC价格 × 10) × 100% = 10%
     实际上，我们用 PPC/SPR 作为效率指标
     ABA数据映射：
@@ -905,7 +957,7 @@ def filter_ad_cost(df: pd.DataFrame) -> pd.DataFrame:
 def filter_long_tail(df: pd.DataFrame, min_words: int = 3) -> pd.DataFrame:
     """
     方法6：基于长尾细分市场选品
-
+    
     筛选条件：单词数≥3的长尾词
     ABA数据映射：
     - 关键词 → 关键词列，计算单词数
@@ -1939,6 +1991,7 @@ def main():
             input_path = Path(args.input)
             output_path = str(safe_output_path(Path(default_output_dir()) / f"{input_path.stem}_cleaned.xlsx"))
 
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         df.to_excel(output_path, index=False)
         print(f"预处理完成: {len(df)} 行数据")
         print(f"列: {list(df.columns)}")

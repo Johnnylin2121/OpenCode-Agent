@@ -1,0 +1,4 @@
+{
+    "displayName": "公开网页浏览",
+    "brief": "使用 webfetch 和 Playwright MCP 检查公开网页，不接触登录态"
+}

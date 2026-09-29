@@ -9,9 +9,9 @@
 
 | # | 规则 | 禁止 | 应该写成 |
 |---|---|---|---|
-| 1 | 不写死用户目录 | `C:\Users\<用户>\...`、用户专属绝对路径 | `$env:USERPROFILE\.config\opencode\...`、`$HOME/.config/opencode/...` |
-| 2 | 不依赖旧 Agent 的解释器变量或硬编码路径 | 旧 Agent 专用变量、机器专属 Python 路径 | `python`、`$OPENCODE_PYTHON`，或先执行运行时预检 |
-| 3 | 不写入 Obsidian Vault | 创建、修改、移动、删除、回写 Vault 文件 | `{OPENCODE_CONFIG_ROOT}\outputs\...` 或用户明确指定的非 Vault 路径 |
+| 1 | 不写死用户目录 | `C:\Users\<用户>\...`、用户专属绝对路径 | `{OPENCODE_CONFIG_ROOT}`、`$env:USERPROFILE\.config\opencode\...`、`$HOME/.config/opencode/...` |
+| 2 | 不依赖专有解释器变量 | 其他 Agent 的解释器变量或机器专属路径 | `python`（Windows）、`python3`（macOS）、`$OPENCODE_PYTHON`，或先执行运行时预检 |
+| 3 | 不写入 Obsidian Vault | 创建、修改、移动、删除、回写 Vault 文件 | `{OPENCODE_OUTPUT_ROOT}/...` 或用户明确指定的非 Vault 路径 |
 
 Vault、wiki、交易体系、记忆文件和原始输入默认只读。
 
@@ -23,13 +23,14 @@ Vault、wiki、交易体系、记忆文件和原始输入默认只读。
 | `{SKILLS_ROOT}` | 技能根 | `{OPENCODE_CONFIG_ROOT}/skills` |
 | `{OPENCODE_PYTHON}` | Python 解释器 | `python` 或用户设置的 `OPENCODE_PYTHON` |
 | `{OPENCODE_OUTPUT_ROOT}` | 非 Vault 产物根 | `{OPENCODE_CONFIG_ROOT}/outputs` |
+| `{VAULT_PATH}` | 用户批准的知识库根 | 本机环境变量或用户确认；默认只读 |
 
 ## 3. 环境对照
 
 | 场景 | Windows / OpenCode | macOS / OpenCode |
 |---|---|---|
 | Python | `python` 或 `$env:OPENCODE_PYTHON` | `python3` 或 `$OPENCODE_PYTHON` |
-| 技能脚本 | `& $PY "$SKILL/scripts/x.py" args` | `"$PY" "$SKILL/scripts/x.py" args` |
+| 技能脚本 | `$PY = $env:OPENCODE_PYTHON; if (-not $PY) { $PY = "python" }`<br>`& $PY "$SKILL/scripts/x.py" args` | `PY="${OPENCODE_PYTHON:-python3}"`<br>`"$PY" "$SKILL/scripts/x.py" args` |
 | 共享行情 | OpenCode `market-data` tool | OpenCode `market-data` tool |
 | 网页来源 | `webfetch`、`websearch`，按权限询问 | `webfetch`、`websearch`，按权限询问 |
 | 浏览器 | `playwright-mcp:playwright`，仅用户触发 | `playwright-mcp:playwright`，仅用户触发 |
@@ -51,6 +52,6 @@ Vault、wiki、交易体系、记忆文件和原始输入默认只读。
 1. 运行 `node tests/smoke.mjs`。
 2. 运行 `opencode debug config` 验证 commands、agents 和 permissions。
 3. 确认 frontmatter `name` 与目录名一致。
-4. 确认目标技能没有旧 Agent 专用变量、用户绝对路径或机器专属工具路径。
+4. 确认目标技能没有其他 Agent 的解释器变量、用户绝对路径或专用工具路径。
 5. 确认没有密钥、真实业务数据、缓存或 Vault 写入。
 6. 只提交 OpenCode 配置、工具、技能和测试改动。

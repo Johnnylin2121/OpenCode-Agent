@@ -10,18 +10,14 @@ metadata:
   output-policy: opencode-non-vault
 ---
 
-## OpenCode 双端执行约定
-
-本文中的 `powershell` 代码块是 Windows 示例；macOS 使用 `bash`/`zsh`。统一先设置 `SKILL_ROOT` 和 `PY`：Windows 使用 `$env:USERPROFILE\.config\opencode\skills\<skill>` 与 `python`，macOS 使用 `$HOME/.config/opencode/skills/<skill>` 与 `python3`。优先使用 `runtime-preflight`、`safe-output` 和 `market-data` 工具；不要把示例中的路径直接复制到另一端。输出必须位于本机 OpenCode 输出根，Vault 默认只读。
-
 # OpenCode 执行边界
 
 1. Vault 文件只读；禁止创建、修改、移动、删除、回写或归档任何 Vault 文件。
-2. 默认结果写入 `{OPENCODE_CONFIG_ROOT}\outputs\trading\daily-review\`；用户要求只在对话展示时不创建文件。
+2. 默认结果写入 `{OPENCODE_OUTPUT_ROOT}/trading/daily-review/`；用户要求只在对话展示时不创建文件。
 3. 交易计划、记忆文件和复盘文件只读；任何计划或记忆写入必须另行获得用户明确授权，并使用非 Vault 路径。
 4. 盘前、盘中、盘后流程均由用户手动触发，不创建系统定时任务，不发送外部通知。
 5. 公开网络只在用户实际触发且当前阶段需要行情或新闻时访问；不访问账户、Cookie、Token 或交易凭据。
-6. 不调用 MiMo、DSH、Obsidian、domain-memory 或 Excel 专用工具。
+6. 不使用其他 Agent 专用工具、Obsidian 插件、外部记忆插件或 Excel 商业插件；行情统一走下方 OpenCode 入口。
 7. 任何输入缺失都必须显式列出，不创建占位文件，不猜测数据。
 
 # 每日复盘工作流
@@ -34,8 +30,8 @@ metadata:
 
 ## 输出位置
 
-- 默认报告：`{OPENCODE_CONFIG_ROOT}\outputs\trading\daily-review\YYYY-MM-DD-{阶段}.md`。
-- 默认记忆提炼：写入 `{OPENCODE_CONFIG_ROOT}\outputs\trading\memory\`。
+- 默认报告：`{OPENCODE_OUTPUT_ROOT}/trading/daily-review/YYYY-MM-DD-{阶段}.md`。
+- 默认记忆提炼：写入 `{OPENCODE_OUTPUT_ROOT}/trading/memory/`。
 - 用户指定其他非 Vault 路径时，使用用户指定路径。
 - 任何路径若无法证明不在 Vault 内，停止写入并在对话中报告。
 
@@ -68,6 +64,8 @@ node "$MK" tencent "sh600519,sz000001"
 node "$MK" kline "SH600519" 101 120
 node "$MK" get "<公开页面 URL>"
 ```
+
+macOS 对应写法：`$MK="$HOME/.config/opencode/skills/_shared/opencode-market.mjs"`，其余子命令一致。也可直接使用 OpenCode 内置 `market-data` 工具（`index`、`stocks`、`sina`、`tencent`、`kline`、`sector`、`get`）。
 
 - 东方财富数据作为成交额和指数口径基准。
 - 新浪和腾讯用于交叉复核。
@@ -131,7 +129,7 @@ node "$MK" get "<公开页面 URL>"
 - 置信度；
 - 来源复盘和日期。
 
-默认写入 `{OPENCODE_CONFIG_ROOT}\outputs\trading\memory\`。是否合并到交易记忆总表由用户另行授权和触发 `trading-memory-consolidate`。
+默认写入 `{OPENCODE_OUTPUT_ROOT}/trading/memory/`。是否合并到交易记忆总表由用户另行授权和触发 `trading-memory-consolidate`。
 
 ## 观察清单结构
 

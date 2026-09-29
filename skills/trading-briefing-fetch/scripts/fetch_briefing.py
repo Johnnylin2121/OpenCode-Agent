@@ -4,12 +4,21 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
 import akshare as ak
 
-FORBIDDEN_PARTS = {'.obsidian', '交易体系', '早读复核', '财经早读', '交易记忆'}
+# 禁止写入的 Vault-like 目录段 / 文件名（判定时统一做 NFKC + casefold，故此处大小写与全角不敏感）
+FORBIDDEN_PARTS = {
+    '.obsidian', '.trash', '工作',
+    '交易体系', '早读复核', '财经早读', '交易记忆', '亚马逊工作管理',
+}
+FORBIDDEN_NAMES = {'memory.md'}
+
+OUTPUT_SUBDIR = ('trading', 'briefing-fetch')
+OPENCODE_CONFIG_ROOT = Path.home() / '.config' / 'opencode'
 CATEGORY_WORDS = {
     '商品': ['原油', '黄金', '铜', '铝', '氧化铝', '煤炭', '烯烃', '商品', '期货'],
     '存储AI': ['存储', 'AI', '芯片', '英伟达', '数据中心'],
@@ -26,6 +35,24 @@ def configure_output() -> None:
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 
+def _fold(value) -> str:
+    return unicodedata.normalize('NFKC', str(value)).casefold()
+
+
+FORBIDDEN_PARTS_FOLDED = frozenset(_fold(part) for part in FORBIDDEN_PARTS)
+FORBIDDEN_NAMES_FOLDED = frozenset(_fold(name) for name in FORBIDDEN_NAMES)
+
+
+def opencode_output_root() -> Path:
+    """OpenCode 非 Vault 输出根：优先 OPENCODE_OUTPUT_ROOT。"""
+    root = os.environ.get('OPENCODE_OUTPUT_ROOT') or str(OPENCODE_CONFIG_ROOT / 'outputs')
+    return Path(root).expanduser().resolve()
+
+
+def default_output_dir() -> Path:
+    return opencode_output_root().joinpath(*OUTPUT_SUBDIR)
+
+
 def is_within(parent: Path, child: Path) -> bool:
     try:
         child.relative_to(parent)
@@ -35,11 +62,33 @@ def is_within(parent: Path, child: Path) -> bool:
 
 
 def safe_output_path(raw: str) -> Path:
-    target = Path(raw).expanduser().resolve()
+    """校验输出路径：拒绝 Vault、Vault-like 段、路径穿越与 CWD 隐式输出。
+
+    绝对路径视为显式指定；纯文件名（无分隔符）落到本技能 OpenCode 输出目录；
+    其他相对路径（CWD 隐式输出）拒绝。
+    """
+    if raw is None or not str(raw).strip():
+        raise ValueError('输出路径为空')
+    text = str(raw).strip()
+    candidate = Path(text).expanduser()
+    if '..' in candidate.parts:
+        raise ValueError(f'路径穿越被拒绝: {text}')
+    if not candidate.is_absolute():
+        is_bare_name = len(candidate.parts) == 1 and not text.startswith(('.\\', './'))
+        if not is_bare_name:
+            raise ValueError(
+                f'拒绝 CWD 隐式输出: {text}；请改用绝对非 Vault 路径、'
+                f'只给文件名（写入 {default_output_dir()}），或省略 --output'
+            )
+        candidate = default_output_dir() / candidate.name
+    target = candidate.resolve()
     vault = os.environ.get('VAULT_PATH')
     if vault and is_within(Path(vault).expanduser().resolve(), target):
         raise ValueError(f'Vault write denied: {target}')
-    if any(part in FORBIDDEN_PARTS for part in target.parts) or target.name == 'MEMORY.md':
+    hit = {_fold(part) for part in target.parts} & FORBIDDEN_PARTS_FOLDED
+    if hit:
+        raise ValueError(f'Vault-like write denied: {target}（命中段: {", ".join(sorted(hit))}）')
+    if _fold(target.name) in FORBIDDEN_NAMES_FOLDED:
         raise ValueError(f'Vault-like write denied: {target}')
     return target
 
@@ -157,7 +206,7 @@ def parse_args():
     parser.add_argument('--domestic', default='CU,AL,RU')
     parser.add_argument('--foreign', default='hf_GC,hf_CL,hf_CHA50CFD')
     parser.add_argument('--us', default='.INX,.DJI,.IXIC')
-    parser.add_argument('--output', help='非 Vault 输出路径；省略时输出到标准输出')
+    parser.add_argument('--output', help='非 Vault 输出路径；只给文件名时写入 OpenCode 输出根；省略时输出到标准输出')
     return parser.parse_args()
 
 
@@ -170,7 +219,11 @@ def main():
     news = fetch_news(args.date)
     report = render(args.date, domestic, foreign, us_indices, news)
     if args.output:
-        target = safe_output_path(args.output)
+        try:
+            target = safe_output_path(args.output)
+        except ValueError as exc:
+            print(f'拒绝写入：{exc}', file=sys.stderr)
+            raise SystemExit(2)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(report, encoding='utf-8')
         print(f'已写入非 Vault 文件：{target}')
