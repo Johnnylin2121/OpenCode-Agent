@@ -11,6 +11,9 @@ output/
 .venv/
 opencode.local.jsonc
 config/local/
+# Machine-local Vault path marker: absolute path, must never enter Git (REPO-MAP: skills/ must not contain machine paths)
+VAULT_PATH
+ADAPTATION_MEMORY.md
 .DS_Store
 Thumbs.db
 *.xlsx

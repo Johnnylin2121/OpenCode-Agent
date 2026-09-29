@@ -19,6 +19,10 @@ FORBIDDEN_NAMES = {'memory.md'}
 
 OUTPUT_SUBDIR = ('trading', 'briefing-fetch')
 OPENCODE_CONFIG_ROOT = Path.home() / '.config' / 'opencode'
+
+# 用户授权的唯一 Vault 写入目标（2026-09-29 立）：早报数据落到早读复核子目录。
+# 顺序敏感：必须逐段匹配，禁止只匹配末段，否则同名的其他目录会被误放行。
+VAULT_WRITE_SUBDIR = ('交易体系', '09.新闻资讯', '早读复核', '早报数据')
 CATEGORY_WORDS = {
     '商品': ['原油', '黄金', '铜', '铝', '氧化铝', '煤炭', '烯烃', '商品', '期货'],
     '存储AI': ['存储', 'AI', '芯片', '英伟达', '数据中心'],
@@ -53,6 +57,24 @@ def default_output_dir() -> Path:
     return opencode_output_root().joinpath(*OUTPUT_SUBDIR)
 
 
+def vault_root() -> Path | None:
+    """本机 Vault 根：优先环境变量 VAULT_PATH，其次本机标记文件（机器本地状态，不跨端同步）。"""
+    raw = os.environ.get('VAULT_PATH')
+    if not raw:
+        marker = OPENCODE_CONFIG_ROOT / 'VAULT_PATH'
+        if marker.is_file():
+            raw = marker.read_text(encoding='utf-8', errors='replace').strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
+
+
+def vault_allowed_dir() -> Path | None:
+    """本 skill 唯一获授权的 Vault 目录；Vault 根未知时返回 None（此时拒绝一切 Vault 写入）。"""
+    root = vault_root()
+    return root.joinpath(*VAULT_WRITE_SUBDIR) if root else None
+
+
 def is_within(parent: Path, child: Path) -> bool:
     try:
         child.relative_to(parent)
@@ -61,11 +83,24 @@ def is_within(parent: Path, child: Path) -> bool:
         return False
 
 
+def in_vault_allowed_dir(target: Path) -> bool:
+    """目标是否落在授权子目录内——用 relative_to 逐段前缀匹配，避免 `任意/早读复核/早报数据` 被误放行。"""
+    allowed = vault_allowed_dir()
+    if allowed is None:
+        return False
+    try:
+        target.resolve().relative_to(allowed)
+        return True
+    except ValueError:
+        return False
+
+
 def safe_output_path(raw: str) -> Path:
-    """校验输出路径：拒绝 Vault、Vault-like 段、路径穿越与 CWD 隐式输出。
+    """校验输出路径。
 
     绝对路径视为显式指定；纯文件名（无分隔符）落到本技能 OpenCode 输出目录；
     其他相对路径（CWD 隐式输出）拒绝。
+    Vault 内仅放行 VAULT_WRITE_SUBDIR 一个子目录，其余一律拒绝。
     """
     if raw is None or not str(raw).strip():
         raise ValueError('输出路径为空')
@@ -82,9 +117,15 @@ def safe_output_path(raw: str) -> Path:
             )
         candidate = default_output_dir() / candidate.name
     target = candidate.resolve()
-    vault = os.environ.get('VAULT_PATH')
-    if vault and is_within(Path(vault).expanduser().resolve(), target):
-        raise ValueError(f'Vault write denied: {target}')
+    vault = vault_root()
+    if vault and is_within(vault, target):
+        if in_vault_allowed_dir(target):
+            return target
+        raise ValueError(
+            f'Vault write denied: {target}\n'
+            f'本脚本在 Vault 内只允许写入 {"/".join(VAULT_WRITE_SUBDIR)}/；'
+            f'如需其他目录请先取得用户对该次写入的明确授权。'
+        )
     hit = {_fold(part) for part in target.parts} & FORBIDDEN_PARTS_FOLDED
     if hit:
         raise ValueError(f'Vault-like write denied: {target}（命中段: {", ".join(sorted(hit))}）')
@@ -176,7 +217,7 @@ def classify(title):
 def render(date, domestic, foreign, us_indices, news):
     lines = [
         f'# 自动数据层早报草稿 - {date}',
-        '> 自动数据层，未经人工审核；未写入 Obsidian。',
+        '> 自动数据层，未经人工审核；仅作「早读复核」输入与人工参考。',
         '',
         '## 商品价格',
     ]
@@ -196,7 +237,13 @@ def render(date, domestic, foreign, us_indices, news):
         lines.append(f"- [{classify(str(item.get('title', '')))}] {item.get('title', '')}（{item.get('source', '')}）")
     if not news:
         lines.append('[待补]')
-    lines.extend(['', '## 数据说明', '- 数据源：akshare 公开接口。', '- 失败项目保留 [待补]，不猜测数值。', '- 本文件默认只输出到标准输出；持久化路径必须是非 Vault 路径。'])
+    lines.extend([
+        '',
+        '## 数据说明',
+        '- 数据源：akshare 公开接口。',
+        '- 失败项目保留 [待补]，不猜测数值。',
+        '- 落盘位置仅限 `交易体系/09.新闻资讯/早读复核/早报数据/`（用户 2026-09-29 授权的唯一 Vault 目录）。',
+    ])
     return '\n'.join(lines) + '\n'
 
 
@@ -206,7 +253,11 @@ def parse_args():
     parser.add_argument('--domestic', default='CU,AL,RU')
     parser.add_argument('--foreign', default='hf_GC,hf_CL,hf_CHA50CFD')
     parser.add_argument('--us', default='.INX,.DJI,.IXIC')
-    parser.add_argument('--output', help='非 Vault 输出路径；只给文件名时写入 OpenCode 输出根；省略时输出到标准输出')
+    parser.add_argument(
+        '--output',
+        help='省略时输出到标准输出；只给文件名时写入 OpenCode 输出根；'
+             f'Vault 内仅允许 {"".join(VAULT_WRITE_SUBDIR)}/',
+    )
     return parser.parse_args()
 
 
@@ -226,7 +277,8 @@ def main():
             raise SystemExit(2)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(report, encoding='utf-8')
-        print(f'已写入非 Vault 文件：{target}')
+        scope = 'Vault 授权目录' if (vault_root() and in_vault_allowed_dir(target)) else 'OpenCode 非 Vault'
+        print(f'已写入{scope}文件：{target}')
     else:
         print(report)
 
