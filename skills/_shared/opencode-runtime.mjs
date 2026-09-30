@@ -20,10 +20,11 @@ export function resolvePython() {
   return process.platform === 'win32' ? 'python' : 'python3'
 }
 
-// 用户授权的 Vault 写入白名单（2026-09-29 立）。key = skill 名，value = 相对 Vault 根的子目录。
-// 只有列在此处的 skill 可写 Vault；其余（含所有 Amazon 域 skill 与通用守卫）一律拒绝。
+// 用户授权的 Vault 写入白名单（2026-09-30 实测校正）。key = skill 名，value = 相对 Vault 根的子目录。
+// 2026-09-30 起无「早报数据/」中间层：复核报告、自动草稿、rss-digest 同放 早读复核/ 下。
+// 两个 skill 共用同一格 —— 共享授权格必须让两者都能写，故判定用「最长前缀且并列全部放行」。
 export const VAULT_WRITE_SCOPES = {
-  'trading-briefing-fetch': ['交易体系', '09.新闻资讯', '早读复核', '早报数据'],
+  'trading-briefing-fetch': ['交易体系', '09.新闻资讯', '早读复核'],
   'trading-briefing-review': ['交易体系', '09.新闻资讯', '早读复核'],
 }
 
@@ -74,22 +75,24 @@ export function assertScopedVaultOutput(outputPath, skill, vaultPath = resolveVa
   if (!subdir) throw new Error(`该 skill 未登记 Vault 写权限: ${skill}（可用: ${Object.keys(VAULT_WRITE_SCOPES).join(', ')}）`)
   if (!vaultPath) throw new Error('Vault 根未配置（VAULT_PATH 环境变量或 ~/.config/opencode/VAULT_PATH），拒绝一切 Vault 写入')
   const target = path.resolve(outputPath)
-  // 最具体授权优先：目标可能同时落在多个 skill 的授权区内（早报数据 嵌在 早读复核 下），
-  // 只有「命中最长前缀」的那个 skill 拥有它，避免 review 去改 fetch 的自动层数据。
-  let owner = null
-  let ownerDepth = -1
+  // 最具体授权优先：命中最长前缀的那一格；若多格并列（同层共享），并列者全部放行。
+  const owners = []
+  let depth = -1
   for (const [name, subdir] of Object.entries(VAULT_WRITE_SCOPES)) {
-    const allowed = path.resolve(vaultPath, ...subdir)
-    if (isWithin(allowed, target) && subdir.length > ownerDepth) {
-      owner = name
-      ownerDepth = subdir.length
+    if (!isWithin(path.resolve(vaultPath, ...subdir), target)) continue
+    if (subdir.length > depth) {
+      depth = subdir.length
+      owners.length = 0
+      owners.push(name)
+    } else if (subdir.length === depth) {
+      owners.push(name)
     }
   }
-  if (owner !== skill) {
+  if (!owners.includes(skill)) {
     throw new Error(
       `Vault write denied: ${target}\n` +
-        (owner
-          ? `该路径归 ${owner} 所有（授权目录: ${VAULT_WRITE_SCOPES[owner].join('/')}/），${skill} 无权写入。`
+        (owners.length
+          ? `该路径归 ${owners.join(' / ')} 所有（授权目录: ${VAULT_WRITE_SCOPES[owners[0]].join('/')}/），${skill} 无权写入。`
           : `${skill} 只允许写入 ${subdir.join('/')}/`),
     )
   }

@@ -15,10 +15,10 @@ metadata:
 
 # OpenCode 执行边界
 
-1. **Vault 写入限定范围**：只允许在 `{VAULT_PATH}/交易体系/09.新闻资讯/早读复核/` 下新建复核文件。**正式早读正文（`交易体系/01.财经早读/`）、自动层数据（同目录 `早报数据/`，归 `trading-briefing-fetch` 所有）只读不改**——守卫按「最具体授权优先」判定，写入 `早报数据/` 会被拒。落盘前可先过 `safe-output`：`{ path, skill: "trading-briefing-review" }`。
+1. **Vault 写入限定范围**：只允许在 `{VAULT_PATH}/交易体系/09.新闻资讯/早读复核/` 下新建复核文件（无「早报数据/」中间层）。**正式早读正文（`交易体系/01.财经早读/`）只读不改**；同目录下的 `rss-digest/` 是 DSH 的 RSS 插件产物，**只读不改**。落盘前可先过 `safe-output`：`{ path, skill: "trading-briefing-review" }`。
 2. 默认在对话中输出复核报告；用户要求落盘时写入上述授权目录。
 3. 每次 Vault 落盘后，必须在 `_系统/日志/log.md` 追加七字段审计（写入者 `OpenCode` / 带时区 ISO 8601 时间 / 操作 / 目标 / 摘要 / 来源依据 / 验证）。
-4. 自动层文件默认取同目录 `早报数据/` 下的当日草稿（由 `trading-briefing-fetch` 产出），也可由用户明确提供。
+4. 自动层文件默认取同目录当日草稿（`YYYY-MM-DD-财经早报-自动草稿.md`，由 `trading-briefing-fetch` 或 vault 侧 `fetch-briefing.ps1` 产出），也可由用户明确提供。
 5. 仅在用户实际触发时使用公开 `webfetch` 或 `websearch` 核验事实；不访问账户和凭据。
 6. 不依赖其他 Agent 专用工具、Obsidian 插件或外部记忆插件；记忆读取使用内置只读文件搜索。
 7. 输入缺失时列出缺失项并停止，不创建占位文件。
@@ -38,7 +38,7 @@ metadata:
 |------|------|
 | 默认 | 对话（不创建文件） |
 | 用户要求落盘 | `{VAULT_PATH}/交易体系/09.新闻资讯/早读复核/YYYY-MM-DD-早读复核.md` |
-| 自动层输入（只读） | 同目录 `早报数据/YYYY-MM-DD-财经早报-自动草稿.md` |
+| 自动层输入（只读） | 同目录 `YYYY-MM-DD-财经早报-自动草稿.md` |
 
 落盘后追加 `_系统/日志/log.md` 审计。文件名日期 = 复核执行日；同一日多次复核用 `-2`、`-3` 后缀，不覆盖既有文件。
 
@@ -92,7 +92,7 @@ metadata:
 
 ## 与其他 skill 的分工
 
-- `trading-briefing-fetch`：只提供自动数据层输入（落 `早报数据/`），不作结论；
+- `trading-briefing-fetch`：只提供自动数据层输入（与本 skill 同目录），不作结论；
 - `trading-contradiction-check`：负责跨日逻辑矛盾；
 - 本 skill 只负责当日事实和判断复核；
 - 全 vault 扫描不由本 skill 自动执行；

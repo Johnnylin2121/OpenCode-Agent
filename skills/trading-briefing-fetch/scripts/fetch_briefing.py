@@ -20,9 +20,9 @@ FORBIDDEN_NAMES = {'memory.md'}
 OUTPUT_SUBDIR = ('trading', 'briefing-fetch')
 OPENCODE_CONFIG_ROOT = Path.home() / '.config' / 'opencode'
 
-# 用户授权的唯一 Vault 写入目标（2026-09-29 立）：早报数据落到早读复核子目录。
-# 顺序敏感：必须逐段匹配，禁止只匹配末段，否则同名的其他目录会被误放行。
-VAULT_WRITE_SUBDIR = ('交易体系', '09.新闻资讯', '早读复核', '早报数据')
+# 用户授权的唯一 Vault 写入目标（2026-09-30 校正）：无「早报数据/」中间层，
+# 自动草稿与复核报告、rss-digest 同放 交易体系/09.新闻资讯/早读复核/ 下。
+VAULT_WRITE_SUBDIR = ('交易体系', '09.新闻资讯', '早读复核')
 CATEGORY_WORDS = {
     '商品': ['原油', '黄金', '铜', '铝', '氧化铝', '煤炭', '烯烃', '商品', '期货'],
     '存储AI': ['存储', 'AI', '芯片', '英伟达', '数据中心'],
@@ -84,7 +84,7 @@ def is_within(parent: Path, child: Path) -> bool:
 
 
 def in_vault_allowed_dir(target: Path) -> bool:
-    """目标是否落在授权子目录内——用 relative_to 逐段前缀匹配，避免 `任意/早读复核/早报数据` 被误放行。"""
+    """目标是否落在授权子目录内——用 relative_to 逐段前缀匹配，避免 `任意/早读复核/x.md` 被误放行。"""
     allowed = vault_allowed_dir()
     if allowed is None:
         return False
@@ -242,7 +242,7 @@ def render(date, domestic, foreign, us_indices, news):
         '## 数据说明',
         '- 数据源：akshare 公开接口。',
         '- 失败项目保留 [待补]，不猜测数值。',
-        '- 落盘位置仅限 `交易体系/09.新闻资讯/早读复核/早报数据/`（用户 2026-09-29 授权的唯一 Vault 目录）。',
+        '- 落盘位置仅限 `交易体系/09.新闻资讯/早读复核/`（用户授权的唯一 Vault 目录；无「早报数据/」中间层）。',
     ])
     return '\n'.join(lines) + '\n'
 
