@@ -41,6 +41,16 @@ metadata:
 5. 展示商品、A股/外盘指数、US 指数和快讯四部分，并标出 `[待补]` 项。
 6. 终筛和事实复核交给 `trading-briefing-review`，本 skill 不作结论。
 
+### ⚠️ 单文件单写者（与 vault 侧脚本的碰撞）
+
+Vault 里已有一支 DSH 侧脚本会写**同名文件**：
+`_系统/scripts/fetch-briefing.ps1`（包装 `fetch-briefing.py`）→ 输出
+`交易体系/09.新闻资讯/早读复核/YYYY-MM-DD-财经早报-自动草稿.md`
+
+- **默认不落 Vault**（输出到对话 / OpenCode 输出根），这是首选。
+- 只有当用户明确要求把 OpenCode 的抓取结果落到 Vault 时才用 `--output`；**一旦落盘，同日该文件应由本 skill 独占**，并提示用户 DSH 侧同日不再跑 vault 脚本。
+- **禁止**写入 `早读复核/rss-digest/`——那是 DSH 的 `dsh-rss-digest` 插件的目录，脚本与守卫双重拒绝。
+
 ## 数据口径
 
 - 默认采集国内期货、外盘期货、A50、`.INX`、`.DJI`、`.IXIC` 和公开快讯。

@@ -70,11 +70,28 @@ export function assertNonVaultOutput(outputPath, vaultPath = resolveVaultPath())
  * ⚠️ 通用守卫（assertNonVaultOutput / safe-output 默认模式）**仍然一律拒绝 Vault**——
  *    Amazon 域 skill 与其他未登记 skill 不因本函数而获得任何 Vault 写权限。
  */
+// 授权目录内仍然只读的子目录（由其他 Agent / 外部工具拥有）。
+// 授权目录只约束「前缀」，不自动放行其中每一个子目录——rss-digest/ 是 DSH 插件产物。
+export const VAULT_READONLY_SUBDIRS = ['rss-digest']
+
+function readOnlyViolation(vaultPath, target) {
+  for (const name of VAULT_READONLY_SUBDIRS) {
+    if (isWithin(path.resolve(vaultPath, '交易体系', '09.新闻资讯', '早读复核', name), target)) {
+      return name
+    }
+  }
+  return null
+}
+
 export function assertScopedVaultOutput(outputPath, skill, vaultPath = resolveVaultPath()) {
   const subdir = VAULT_WRITE_SCOPES[skill]
   if (!subdir) throw new Error(`该 skill 未登记 Vault 写权限: ${skill}（可用: ${Object.keys(VAULT_WRITE_SCOPES).join(', ')}）`)
   if (!vaultPath) throw new Error('Vault 根未配置（VAULT_PATH 环境变量或 ~/.config/opencode/VAULT_PATH），拒绝一切 Vault 写入')
   const target = path.resolve(outputPath)
+  const locked = readOnlyViolation(vaultPath, target)
+  if (locked) {
+    throw new Error(`Vault write denied: ${target}\n${locked}/ 由 DSH 的 dsh-rss-digest 插件拥有（写方在 Vault 之外），OpenCode 只读不改。`)
+  }
   // 最具体授权优先：命中最长前缀的那一格；若多格并列（同层共享），并列者全部放行。
   const owners = []
   let depth = -1

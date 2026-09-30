@@ -23,6 +23,8 @@ OPENCODE_CONFIG_ROOT = Path.home() / '.config' / 'opencode'
 # 用户授权的唯一 Vault 写入目标（2026-09-30 校正）：无「早报数据/」中间层，
 # 自动草稿与复核报告、rss-digest 同放 交易体系/09.新闻资讯/早读复核/ 下。
 VAULT_WRITE_SUBDIR = ('交易体系', '09.新闻资讯', '早读复核')
+# 授权目录内仍然只读的子目录：rss-digest/ 由 DSH 的 dsh-rss-digest 插件拥有
+VAULT_READONLY_SUBDIR = ('交易体系', '09.新闻资讯', '早读复核', 'rss-digest')
 CATEGORY_WORDS = {
     '商品': ['原油', '黄金', '铜', '铝', '氧化铝', '煤炭', '烯烃', '商品', '期货'],
     '存储AI': ['存储', 'AI', '芯片', '英伟达', '数据中心'],
@@ -119,6 +121,12 @@ def safe_output_path(raw: str) -> Path:
     target = candidate.resolve()
     vault = vault_root()
     if vault and is_within(vault, target):
+        locked = vault.joinpath(*VAULT_READONLY_SUBDIR)
+        if is_within(locked, target):
+            raise ValueError(
+                f'Vault write denied: {target}\n'
+                f'{"/".join(VAULT_READONLY_SUBDIR)}/ 由 DSH 的 dsh-rss-digest 插件拥有（写方在 Vault 之外），本脚本只读不改。'
+            )
         if in_vault_allowed_dir(target):
             return target
         raise ValueError(

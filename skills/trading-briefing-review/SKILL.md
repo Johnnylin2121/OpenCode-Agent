@@ -15,7 +15,7 @@ metadata:
 
 # OpenCode 执行边界
 
-1. **Vault 写入限定范围**：只允许在 `{VAULT_PATH}/交易体系/09.新闻资讯/早读复核/` 下新建复核文件（无「早报数据/」中间层）。**正式早读正文（`交易体系/01.财经早读/`）只读不改**；同目录下的 `rss-digest/` 是 DSH 的 RSS 插件产物，**只读不改**。落盘前可先过 `safe-output`：`{ path, skill: "trading-briefing-review" }`。
+1. **Vault 写入限定范围**：只允许在 `{VAULT_PATH}/交易体系/09.新闻资讯/早读复核/` 下新建复核文件（无「早报数据/」中间层）。**正式早读正文（`交易体系/01.财经早读/`）只读不改**；同目录下的 `rss-digest/` 是 DSH 的 RSS 插件产物，**只读不改**（守卫 `VAULT_READONLY_SUBDIRS` 强制，非仅文档约定）。复核文件名 `YYYY-MM-DD-早读复核.md` 与自动草稿 `-财经早报-自动草稿.md` 不同名，天然不撞。落盘前可先过 `safe-output`：`{ path, skill: "trading-briefing-review" }`。
 2. 默认在对话中输出复核报告；用户要求落盘时写入上述授权目录。
 3. 每次 Vault 落盘后，必须在 `_系统/日志/log.md` 追加七字段审计（写入者 `OpenCode` / 带时区 ISO 8601 时间 / 操作 / 目标 / 摘要 / 来源依据 / 验证）。
 4. 自动层文件默认取同目录当日草稿（`YYYY-MM-DD-财经早报-自动草稿.md`，由 `trading-briefing-fetch` 或 vault 侧 `fetch-briefing.ps1` 产出），也可由用户明确提供。
