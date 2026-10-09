@@ -58,6 +58,23 @@ metadata:
 
 ## Step 1：收集竞品和关键词
 
+### 竞品发现：类目 BSR Top100 全量法（可选，用户给榜单链接或要"找对标"时）
+
+当用户给的是**类目榜单 / BSR 链接**，或需要"找出该品类有参考价值的对标品"时，不要对榜单页逐页抓取——**每页设计 50 条但服务端只渲染 30 条，Jina 逐页只能拿 30/页，会永久缺 #31–50 与 #81–100**。完整方法论见 `references/bsr-top100.md`，工具 `scripts/bsr_top100.py`：
+
+1. 骨架：Jina `x-respond-with: html` 抓 `?pg=1/2` → 解析 `data-client-recs-list` JSON → rank→ASIN 全量 100；
+2. 补详情：对缺标题的 ASIN 6 线程并行抓 dp（429 尾部串行退避 8s×3）→ 验收线 100/100 有 title；
+3. 格局分析：lane 分类、价格带、自家品牌占位、体量之王（reviews 最高）；
+4. 从同 lane + 价格带邻域中选 4–6 个对标品作为本 Step 的竞品输入（不足再向用户要 ASIN）。
+
+```powershell
+$SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-listing"
+$PY = $env:OPENCODE_PYTHON; if (-not $PY) { $PY = "python" }
+& $PY "$SKILL\scripts\bsr_top100.py" --url "https://www.amazon.com/gp/bestsellers/pc/<node>" --output bsr100.json
+```
+
+只读公开榜单页，不访问账户数据；BSR 价格是快照，报告须注明抓取日期。
+
 ### 抓取顺序
 
 1. 使用 `webfetch` 获取公开商品页；

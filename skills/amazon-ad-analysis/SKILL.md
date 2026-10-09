@@ -119,6 +119,8 @@ macOS 对应写法：技能目录为 `$HOME/.config/opencode/skills/amazon-ad-an
 
 ## Phase 4：ASIN 深挖
 
+> 竞品 ASIN 池（SP 商品定位选池、竞品否词）与 Listing 对标选品同源：类目 **BSR Top100 全量筛选法**见 `../amazon-listing/references/bsr-top100.md`，工具 `../amazon-listing/scripts/bsr_top100.py`——**勿逐页抓榜单页**（每页设计 50 条但服务端只渲染 30 条，会永久缺 #31–50 与 #81–100）。只读公开页，不访问账户数据。
+
 ### 4A Listing 数据
 
 优先级：

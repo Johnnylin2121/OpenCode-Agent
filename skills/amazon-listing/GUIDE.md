@@ -12,7 +12,16 @@
 
 ### Step 1：竞品与关键词
 
-抓取顺序：`webfetch` → Playwright MCP → 用户粘贴。竞品页面失败时不反复重试。
+竞品来源二选一：
+
+- 用户直接给 ASIN/URL → 按抓取顺序 `webfetch` → Playwright MCP → 用户粘贴，竞品页面失败时不反复重试；
+- 用户给**类目榜单 / BSR 链接**，或要"找对标品" → 先用 `scripts/bsr_top100.py` 全量读 Top100（逐页抓榜单会永久缺 #31–50 与 #81–100），再从同 lane + 价格带邻域选 4–6 个对标品进入词频；方法论见 `references/bsr-top100.md`。
+
+```powershell
+$SKILL = "$env:USERPROFILE\.config\opencode\skills\amazon-listing"
+$PY = $env:OPENCODE_PYTHON; if (-not $PY) { $PY = "python" }
+& $PY "$SKILL\scripts\bsr_top100.py" --url "https://www.amazon.com/gp/bestsellers/pc/<node>" --output bsr100.json
+```
 
 使用：
 
