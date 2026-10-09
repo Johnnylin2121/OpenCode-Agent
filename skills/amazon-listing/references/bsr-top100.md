@@ -1,7 +1,7 @@
 # BSR Top100 全量读取与类目格局分析（2026-10-08 实证定式）
 
 > 归属：`amazon-listing` skill。`amazon-product-selection`（品类格局）与 `amazon-ad-analysis`（定位竞品池）**引用本文，不复制**。
-> 工具：同技能 `scripts/bsr_top100.py`（stdlib only，`{OPENCODE_PYTHON}` / `python` / `python3` 可跑）。
+> 工具：同技能 `scripts/bsr_top100.py`（stdlib only，`$OPENCODE_PYTHON` / `python` / `python3` 可跑）。
 > 边界：只读公开榜单页，不访问 Amazon 账户、Cookie 或登录态；产出写 OpenCode 非 Vault 目录（见文末"输出与边界"）。
 
 ---
@@ -74,6 +74,6 @@ macOS：技能目录 `$HOME/.config/opencode/skills/amazon-listing`，解释器 
 
 ## 8. 输出与边界
 
-- JSON 结果默认写当前工作目录；需要留档时写入 `{OPENCODE_OUTPUT_ROOT}/amazon/listing/`；
+- JSON 结果默认写当前工作目录；需要留档时写入 `{OPENCODE_OUTPUT_ROOT}/amazon/listing/`（macOS 为 `$HOME/.config/opencode/outputs/amazon/listing/`）；
 - 报告须标注快照日期；不写入 Obsidian Vault、`工作/` 或任何 Amazon 工作管理知识库路径；
 - 不访问 Amazon 账户、Cookie、Token；竞品数据仅作对标参考，不直接变成本产品事实，未确认项标 `[待确认]`。
