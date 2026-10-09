@@ -15,7 +15,8 @@ try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
-ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+# 保持 TLS 证书校验开启（安全基线，勿关闭）。
+ctx = ssl.create_default_context()
 
 
 def _get(url: str, headers: dict, timeout: int = 120, retries: int = 3) -> str:
