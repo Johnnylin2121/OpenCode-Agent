@@ -53,8 +53,14 @@ Vault 里已有一支 DSH 侧脚本会写**同名文件**：
 
 ## 数据口径
 
-- 默认采集国内期货、外盘期货、A50、`.INX`、`.DJI`、`.IXIC` 和公开快讯。
+- 默认采集国内期货、外盘期货、`.INX`、`.DJI`、`.IXIC` 和公开快讯。
 - 期货代码可以通过 `--domestic`、`--foreign`、`--us` 覆盖。
+- **代码格式（akshare 1.19.1 实测，2026-10-02 校正）**：
+  - `--domestic` 传**中文品种名**（`ak.futures_symbol_mark()` 的 `symbol` 列取值），默认 `沪铜,沪铝,原油`；传 `CU,AL,RU` 会抛 `KeyError`。
+  - `--foreign` 传**交易所 code**（`ak.futures_hq_subscribe_exchange_symbol()` 的 `code` 列取值），默认 `GC,CL,OIL`（COMEX黄金 / NYMEX原油 / 布伦特）；`hf_*` 前缀写法已失效。
+  - **A50 不在 akshare 外盘表内**；需要 A50 时改用 OpenCode 自带行情入口取 `hf_CHA50CFD`：
+    `node "{OPENCODE_CONFIG_ROOT}/skills/_shared/opencode-market.mjs" sina "hf_CHA50CFD"`。
+- 美股指数返回数千行按日期升序的历史，脚本取**末尾**为最新交易日。
 - 快讯只做来源和关键词分类，不把分类当作投资判断。
 - 任何实时或延迟数据都必须在结果中注明来源和采集时间。
 

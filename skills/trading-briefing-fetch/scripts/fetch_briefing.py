@@ -149,10 +149,17 @@ def call(label, function, *args, **kwargs):
         return {'label': label, 'data': None, 'error': f'{type(exc).__name__}: {exc}'}
 
 
-def records(frame, limit=20):
+def records(frame, limit=20, latest=False):
+    """取前/后 N 行转为可序列化记录。
+
+    latest=True 用于时间序列（美股指数等数千行、按日期升序），
+    必须取末尾才是最新交易日；默认 False 保留取首行的原行为（快讯等当日列表）。
+    2026-10-02 修正：早报曾把 .INX 显示为 2004 年数据（head 取到最旧 20 行）。
+    """
     if frame is None or getattr(frame, 'empty', True):
         return []
-    return frame.head(limit).astype(str).to_dict(orient='records')
+    picked = frame.tail(limit) if latest else frame.head(limit)
+    return picked.astype(str).to_dict(orient='records')
 
 
 def text(value):
@@ -196,7 +203,8 @@ def fetch_us_indices(symbols):
         result = call(f'美股指数 {symbol}', ak.index_us_stock_sina, symbol=symbol)
         results.append({
             'symbol': symbol,
-            'rows': records(result['data']),
+            # 美股指数返回数千行历史（按日期升序），必须取末尾才是最新交易日
+            'rows': records(result['data'], latest=True),
             'error': result['error'],
         })
     return results
@@ -229,17 +237,20 @@ def render(date, domestic, foreign, us_indices, news):
         '',
         '## 商品价格',
     ]
-    for item in domestic + foreign:
-        lines.extend(['', f"### {item['symbol']}", item['error'] or '[待补]'])
-        if item['rows']:
-            headers = list(item['rows'][0].keys())
-            lines.append(table(headers, item['rows']))
-    lines.extend(['', '## 美股指数'])
-    for item in us_indices:
-        lines.extend(['', f"### {item['symbol']}", item['error'] or '[待补]'])
-        if item['rows']:
-            headers = list(item['rows'][0].keys())
-            lines.append(table(headers, item['rows']))
+    for section_index, group in enumerate((domestic + foreign, us_indices)):
+        if section_index:
+            lines.extend(['', '## 美股指数'])
+        for item in group:
+            lines.extend(['', f"### {item['symbol']}"])
+            # 2026-10-02 修正：原写法 `item['error'] or '[待补]'` 在有数据时也打印 [待补]，
+            # 误导读者以为数据缺失。仅在报错或真的取不到行时才标注。
+            if item['error']:
+                lines.append(item['error'])
+            elif not item['rows']:
+                lines.append('[待补]')
+            if item['rows']:
+                headers = list(item['rows'][0].keys())
+                lines.append(table(headers, item['rows']))
     lines.extend(['', '## 快讯筛选'])
     for item in news:
         lines.append(f"- [{classify(str(item.get('title', '')))}] {item.get('title', '')}（{item.get('source', '')}）")
@@ -258,8 +269,14 @@ def render(date, domestic, foreign, us_indices, news):
 def parse_args():
     parser = argparse.ArgumentParser(description='OpenCode trading briefing data fetch')
     parser.add_argument('--date', default=datetime.now().strftime('%Y-%m-%d'))
-    parser.add_argument('--domestic', default='CU,AL,RU')
-    parser.add_argument('--foreign', default='hf_GC,hf_CL,hf_CHA50CFD')
+    # akshare 1.19.1 实测口径（2026-10-02 校正）：
+    #   --domestic 传「中文品种名」，它是 ak.futures_symbol_mark() 的 symbol 列取值
+    #              （沪铜/沪铝/原油；旧的 CU,AL,RU 抛 KeyError）
+    #   --foreign  传「交易所 code」，取自 ak.futures_hq_subscribe_exchange_symbol()
+    #              （GC=COMEX黄金, CL=NYMEX原油, OIL=布伦特；旧的 hf_* 前缀写法已失效）
+    #   A50：akshare 外盘表无此品种，需改用 skills/_shared/opencode-market.mjs sina 取 hf_CHA50CFD
+    parser.add_argument('--domestic', default='沪铜,沪铝,原油')
+    parser.add_argument('--foreign', default='GC,CL,OIL')
     parser.add_argument('--us', default='.INX,.DJI,.IXIC')
     parser.add_argument(
         '--output',
