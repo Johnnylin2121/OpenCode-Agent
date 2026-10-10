@@ -5,6 +5,9 @@ import { tool } from '@opencode-ai/plugin'
 import { OPENCODE_SKILLS_ROOT } from '../skills/_shared/opencode-runtime.mjs'
 
 const execFileAsync = promisify(execFile)
+// The OpenCode host may be a self-contained binary: process.execPath then points at the
+// host itself, not Node. Resolve `node` from PATH instead; OPENCODE_NODE overrides.
+const nodeBin = process.env.OPENCODE_NODE || 'node'
 const allowedCommands = new Set(['index', 'stocks', 'sector', 'sina', 'tencent', 'kline'])
 
 export default tool({
@@ -19,7 +22,7 @@ export default tool({
     }
     const values = args.values || []
     const script = path.join(OPENCODE_SKILLS_ROOT, '_shared', 'opencode-market.mjs')
-    const result = await execFileAsync(process.execPath, [script, args.command, ...values], {
+    const result = await execFileAsync(nodeBin, [script, args.command, ...values], {
       timeout: 30000,
       maxBuffer: 2 * 1024 * 1024,
       windowsHide: true
