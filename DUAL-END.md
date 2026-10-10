@@ -63,6 +63,8 @@ pull --rebase
 
 Do not use `git add -A` blindly. Do not force-push. Do not use a Mac absolute path in a Windows block or the reverse. Keep platform-specific commands adjacent and update the CI matrix.
 
+**Push-time dual-end filter:** Only push updates that are usable on both Windows and macOS. Single-end local adaptations and optimizations (a path, interpreter, command, or toolchain tweak specific to one OS) stay on that machine and do not enter the repository. When a change mixes both, split it: push the portable part and keep the platform-local part on the machine.
+
 ## Knowledge-base exchange
 
 Agents may read approved records from the shared knowledge base. A write is allowed only for the specific task the user requested, with source, time, scope, and no secrets. Keep each Agent's runtime output separate even when the business topic is shared.
